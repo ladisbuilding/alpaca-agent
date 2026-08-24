@@ -18,6 +18,22 @@ MCP server.
   CLAUDE.md: **the P&L track is a variance lottery**, so the build targets durable skill (Alpaca's MCP
   server) and the separate engagement award instead.
 - Scope deliberately capped — several store submissions and a client project are mid-flight.
+- ✅ **Luke enrolled on lablab.ai** (2026-08-24). **2,056 approved participants** and climbing.
+- ⭐⭐ **Pre-building is explicitly ALLOWED**, which changes the plan: *"Use any paper account to start
+  building… explore the API, MCP server, and CLI, prototype your agent, and test strategies. Use any
+  paper account you like during development."* Only the **final submission** needs a brand-new dedicated
+  account at $100,000 (a reused account is disqualified, and its ID goes in the submission).
+  ⇒ **The 4 days before kickoff are development time.**
+- ⭐ **Engagement track has a concrete, small spec:** *"up to **5 links** to posts on **X or LinkedIn**
+  during the hackathon… tagging both lablab.ai and Alpaca."* 5 posts / 7 days = the whole ask for the
+  track with far better odds than P&L. Feed it from DEVLOG → the lad `/admin` post-ideas pipeline
+  (deployed + runtime-verified 2026-08-24).
+- **Signup:** `https://alpaca.markets` (the hackathon's "Create paper account" button is just that, plus
+  utm tracking). Docs: `https://docs.alpaca.markets/us/docs/getting-started`.
+- **Official resources worth reading before kickoff:**
+  `github.com/alpacahq/alpaca-skills` (skills for AI-powered trading) · `github.com/alpacahq/cli` ·
+  `github.com/alpacahq/alpaca-py` · `github.com/alpacahq/alpaca-trade-api-js` ·
+  `docs.alpaca.markets/us/docs/getting-started-with-trading-api`
 - **Registration link:** `https://lablab.ai/ai-hackathons/alpaca-ai-trading-agents-hackathon?enroll=true`
   ✅ **No entry fee** — nothing on the page charges to enter, and Alpaca paper trading is explicitly
   "free, no card required". Luke is already logged into lablab.ai. He is signing up himself (creating
