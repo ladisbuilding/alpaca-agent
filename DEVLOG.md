@@ -2,12 +2,17 @@
 
 ## Current State
 
-**Phase:** registering. Nothing built yet.
+**Phase:** enrolled; nothing built yet. ⭐ **RESUMING prior work — read CLAUDE.md's "READ THIS FIRST".**
 **Event:** Alpaca × lablab.ai AI Trading Agents Hackathon, 28 Aug – 4 Sep 2026, online.
 **Goal (Luke's words):** *"fun and maybe some professional benefit"* — explicitly NOT chasing the P&L prize.
 
-**Next:** register on lablab.ai → create a DEDICATED Alpaca paper account set to $100,000 → spike the
-MCP server.
+**Next:** (1) dev paper-account keys into `.dev.vars` (any paper account — pre-building is allowed);
+(2) **spike Alpaca's MCP server**: quote → options chain → place order → read position back;
+(3) port **QQQ ORB** (already backtested, Sharpe 3.31) and pair it with an options expression, since
+options are mandatory; (4) on launch day only, a **brand-new dedicated** paper account at $100,000.
+
+**Do NOT rebuild from scratch** — `~/brain/archived-projects/{stock-trader,trade-bot,trade-boy}` hold
+backtests, an execution engine and options research. See CLAUDE.md.
 
 ---
 
