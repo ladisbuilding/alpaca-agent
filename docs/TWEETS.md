@@ -94,6 +94,27 @@ and tuning all still happen during the week — and all of it is postable.
 >
 > i'd been quoting the number that proves nothing
 
+**the bear agent works**
+> first real run of my bear agent. fed it an iron condor to attack
+>
+> it pulled live quotes, found my deltas were stale (-0.23 not -0.15), computed realized vol
+> vs implied, and noticed NVDA reports ON expiry day
+>
+> verdict: KILL
+>
+> then: "book is empty, so no correlation objection — i'll concede that one"
+>
+> it argued honestly. that's the part i wasn't sure i'd get
+
+**what one opinion costs**
+> one bear agent turn: 131,836 tokens in, 7,806 out. about 86 cents
+>
+> the input is nearly all option chain dumps
+>
+> six roles per cycle, every 30 min, 6.5 hour session... ~$65/day
+>
+> turns out "let the llm read the whole chain" has a price
+
 ## Tier 2 — good. Process and judgment.
 
 **p&l is 1 of 5**

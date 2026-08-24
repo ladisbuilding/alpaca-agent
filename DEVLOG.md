@@ -162,3 +162,27 @@ rule); (3) budget a full day for the submission package (video + slides + cover 
   fills record what happened.**
 - **Invariant asserted at import time:** `roles.py` fails on import if any role other than
   `executor` holds `trading`. A careless toolset edit breaks the build, not a trading morning.
+
+### 2026-08-24 (cont.) — LLM layer live; the debate is REAL, and it has a price
+- **`agent/src/committee/llm.py`** — `run_turn()` runs one role against its scoped MCP tools:
+  `claude-opus-5`, adaptive thinking, per-role `effort`, server-side refusal fallback
+  (`server-side-fallback-2026-07-01`) so one tripped classifier cannot halt a trading session.
+  All tool results return in a SINGLE user message (splitting them teaches the model to stop
+  calling tools in parallel). Every turn records its full tool-call trail as **evidence**.
+- ⭐⭐ **First live Bear turn — the concept is validated.** Given a QQQ condor to attack it called
+  6 tools unprompted and returned a substantive KILL: caught that the supplied deltas were stale
+  (live 699P −0.2315 vs the −0.148 in the prompt), compared implied vs realized 2-day vol
+  (11 of 26 recent windows breached the wings), found **NVDA reporting on expiry day**, showed the
+  credit did not reconcile with live mids, priced the round-trip exit at 13–27% of credit — then
+  **conceded the one point it could not attack**: *"Book is empty, so no correlation objection."*
+  ⇒ **The debate produces information, not theatre.** This was the project's biggest open risk.
+- ⚠️⚠️ **COST IS A REAL CONSTRAINT.** That single turn: **131,836 input / 7,806 output tokens ≈ $0.86**.
+  Input is dominated by option-chain tool dumps. Extrapolated: ~$5/cycle × 6 roles, every 30 min
+  over a 6.5h session ≈ **$65/day, ~$400 for the week.** Mitigations before it runs unattended:
+  (1) **prompt caching** on system prompts + tool definitions, (2) **trim chain payloads** before
+  they reach the model — the deterministic layer already has the parsed chain, the LLM does not
+  need the raw dump, (3) lower scout effort, (4) fewer cycles/day.
+- **Note:** Alpaca's MCP wraps every tool result in `_alpaca_mcp_security` with
+  `trust: "untrusted_tool_output"` — a built-in prompt-injection guard. Good; keep it intact.
+- Anthropic key currently reused from `chaz`. **Luke is issuing a dedicated key** so hackathon
+  spend is tracked separately.
