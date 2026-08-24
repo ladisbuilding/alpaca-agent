@@ -1,0 +1,21 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "alpaca-agent-api",
+  // lukedepass@gmail.com Cloudflare account.
+  "account_id": "522e035ab8637119c0bf60363e5704ca",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-09-24",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true },
+  "vars": {},
+  // Cycle records: decisions, debate transcripts, gate outcomes, fills.
+  // D1 rather than fleet Postgres — a deployed Worker could not reach fleet Postgres
+  // (dropped 2026-08-20), which is exactly the failure that would bite mid-competition.
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "alpaca-agent",
+      "database_id": "8ac0e776-54b1-44e6-9946-27735e687681"
+    }
+  ]
+}
