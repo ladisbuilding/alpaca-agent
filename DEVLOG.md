@@ -140,3 +140,25 @@ rule); (3) budget a full day for the submission package (video + slides + cover 
   context.** The script asserts this and fails loudly if it ever stops holding.
 - ⭐ **`place_option_order` accepts single-leg AND multi-leg** ⇒ iron condors go through MCP directly,
   no REST fallback needed.
+
+### 2026-08-24 (cont.) — committee roles + scoped MCP sessions
+- **`agent/src/committee/mcp_client.py`** — `scoped_session(toolsets, creds)` starts an MCP server
+  limited to one role's toolsets and yields a session plus Anthropic-shaped tool schemas.
+  `ScopedSession.call()` raises `PermissionError` for out-of-scope tools (the server would reject
+  it anyway; this just fails earlier and more legibly).
+- **`agent/src/committee/roles.py`** — 8 roles on `claude-opus-5`, effort tuned per role
+  (scouts medium, advocates high, risk officer xhigh, executor low).
+- ⭐⭐ **The division of labour is what keeps the strategy "clear, testable":**
+  **Scouts nominate (underlying, sleeve) with a rationale — they never choose strikes.**
+  Deterministic code builds the structure from the live chain. Bull/Bear argue about the built
+  structure. Risk Officer advises; `gates.evaluate()` vetoes. PM sizes within caps. Executor places.
+  ⇒ **An LLM never picks a strike, never sizes past a cap, and never places an order the
+  deterministic gates did not approve.**
+- ⭐ **Caught a hole in my own invariant while writing it.** The Auditor was given `trading` so it
+  could read orders — but that scope also *places* them, silently breaking the one-role-can-trade
+  claim. Probed the server: **`account` alone exposes `get_account_activities`,
+  `get_account_activities_by_type`, `get_portfolio_history` and ZERO order-placing tools.**
+  Auditor now runs on `account`. It is also the better audit source — **orders record intent,
+  fills record what happened.**
+- **Invariant asserted at import time:** `roles.py` fails on import if any role other than
+  `executor` holds `trading`. A careless toolset edit breaks the build, not a trading morning.

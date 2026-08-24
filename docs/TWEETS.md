@@ -65,6 +65,17 @@ and tuning all still happen during the week — and all of it is postable.
 >
 > the bear agent isn't *told* not to trade. it has no hands
 
+**my own invariant caught me**
+> gave the auditor agent the "trading" toolset so it could read orders
+>
+> then the assertion i'd written one file earlier failed: only ONE role may be able to trade
+>
+> turns out `account` scope alone exposes fills + portfolio history and zero order tools
+>
+> auditor reads fills now. which is better anyway
+>
+> orders are intent. fills are what happened
+
 **paper p&l lies**
 > a bot of mine once reported $2,015 profit. 100% win rate
 >
