@@ -16,6 +16,17 @@ best 5, so volume is free upside.
 
 Voice: lowercase, fragments, ellipses. Not marketing copy. A real thing that happened, told plainly.
 
+## The angle — "watch my agent think", not "watch me code"
+
+The brief says share progress *"while you build"*, and the field will post
+"day 3, got order routing working". We pre-build instead, so during the window the agent is
+**already trading** — and the content becomes its live decisions, refusals, debates and P&L.
+Strictly better material, and the track is judged partly on engagement *generated*.
+
+Pre-building is about being **ready at 8am Friday**, not about being **done**. An agent live from
+the open gets ~5.5 scored trading days; one shipped Wednesday gets ~2.5. The dashboard, video, deck
+and tuning all still happen during the week — and all of it is postable.
+
 ---
 
 ## Tier 1 — strongest. Real surprises with a concrete number.

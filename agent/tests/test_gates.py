@@ -42,8 +42,8 @@ def condor(qty: int = 1, credit: float | None = None, underlying: str = "QQQ") -
         Leg(f"{underlying}260828C00716000", Side.SELL, qty, Right.CALL, 716.0, EXPIRY),
         Leg(f"{underlying}260828C00721000", Side.BUY, qty, Right.CALL, 721.0, EXPIRY),
     )
-    # widest single wing is $5; a condor can only lose on one side
-    max_loss = 5.0 * CONTRACT_SIZE * qty * 2 - credit  # both wings counted by the verifier
+    # $5 wings on both sides, non-overlapping shorts => can only lose on ONE side
+    max_loss = 5.0 * CONTRACT_SIZE * qty - credit
     return Proposal(
         underlying=underlying,
         strategy="iron_condor",
@@ -118,7 +118,7 @@ def test_misreported_risk_is_caught():
         underlying=liar.underlying,
         strategy=liar.strategy,
         legs=liar.legs,
-        max_loss=50.0,  # actually ~$880
+        max_loss=50.0,  # actually $380
         max_profit=liar.max_profit,
         net_credit=liar.net_credit,
         bid_ask_pct=liar.bid_ask_pct,
@@ -130,8 +130,27 @@ def test_misreported_risk_is_caught():
 
 def test_verify_defined_risk_matches_geometry():
     derived = verify_defined_risk(condor(qty=1, credit=120.0))
-    # two $5 wings at 100 multiplier, less the credit
-    assert derived == pytest.approx(5.0 * 100 * 2 - 120.0)
+    # ONE $5 wing at the 100 multiplier, less the credit — not both wings summed
+    assert derived == pytest.approx(5.0 * 100 - 120.0)
+
+
+def test_verify_defined_risk_sums_both_sides_when_shorts_overlap():
+    """An inverted structure CAN finish in the money on both sides, so the conservative
+    sum is correct there. Pairs with the test above to prove the max/sum branch works."""
+    inverted = Proposal(
+        underlying="QQQ",
+        strategy="guts",
+        legs=(
+            Leg("a", Side.SELL, 1, Right.PUT, 716.0, EXPIRY),   # short put ABOVE
+            Leg("b", Side.BUY, 1, Right.PUT, 711.0, EXPIRY),
+            Leg("c", Side.SELL, 1, Right.CALL, 696.0, EXPIRY),  # short call BELOW
+            Leg("d", Side.BUY, 1, Right.CALL, 701.0, EXPIRY),
+        ),
+        max_loss=10_000.0,
+        max_profit=1.0,
+        net_credit=100.0,
+    )
+    assert verify_defined_risk(inverted) == pytest.approx(5.0 * 100 * 2 - 100.0)
 
 
 def test_verify_defined_risk_returns_none_for_unverifiable_shape():
@@ -150,7 +169,7 @@ def test_verify_defined_risk_returns_none_for_unverifiable_shape():
 
 
 def test_trade_larger_than_per_trade_cap_is_blocked():
-    big = condor(qty=3)  # ~$2,880 max loss vs $1,000 cap on $100k
+    big = condor(qty=3)  # $1,140 max loss vs the $1,000 cap on $100k
     result = evaluate(big, healthy_portfolio(), CONFIG, NOW)
     assert not result.approved
     assert "TRADE_TOO_LARGE" in result.blocked_by
@@ -179,9 +198,9 @@ def test_just_inside_daily_loss_limit_still_trades_but_warns():
 
 def test_portfolio_risk_cap_blocks_when_book_is_full():
     existing = tuple(
-        OpenPosition(f"SYM{i}", "iron_condor", f"fp{i}", 1_100.0, EXPIRY) for i in range(7)
+        OpenPosition(f"SYM{i}", "iron_condor", f"fp{i}", 1_300.0, EXPIRY) for i in range(7)
     )
-    loaded = healthy_portfolio(open_positions=existing)  # $7,700 of $10,000 cap deployed
+    loaded = healthy_portfolio(open_positions=existing)  # $9,100 of $10,000 cap deployed
     # per-trade cap raised so this test isolates the PORTFOLIO cap, not the per-trade one
     result = evaluate(condor(qty=3), loaded, RiskConfig(max_loss_per_trade_pct=0.05), NOW)
     assert not result.approved
@@ -190,7 +209,7 @@ def test_portfolio_risk_cap_blocks_when_book_is_full():
 
 def test_portfolio_risk_cap_allows_the_same_trade_on_an_emptier_book():
     """Pairs with the test above: proves the cap keys on deployed risk, not on the trade."""
-    existing = (OpenPosition("SYM0", "iron_condor", "fp0", 1_100.0, EXPIRY),)
+    existing = (OpenPosition("SYM0", "iron_condor", "fp0", 1_300.0, EXPIRY),)
     result = evaluate(
         condor(qty=3),
         healthy_portfolio(open_positions=existing),
@@ -337,7 +356,7 @@ def test_kill_switch_blocks_everything():
 
 
 def test_insufficient_buying_power_is_blocked():
-    poor = healthy_portfolio(buying_power=500.0)  # usable = $400 after the 20% buffer
+    poor = healthy_portfolio(buying_power=300.0)  # usable = $240 after the 20% buffer
     result = evaluate(condor(), poor, CONFIG, NOW)
     assert not result.approved
     assert "INSUFFICIENT_BUYING_POWER" in result.blocked_by

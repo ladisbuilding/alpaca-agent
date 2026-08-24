@@ -156,7 +156,7 @@ def verify_defined_risk(proposal: Proposal) -> float | None:
     for leg in proposal.legs:
         by_right.setdefault(leg.right, []).append(leg)
 
-    total_width = 0.0
+    width_by_right: dict[Right, float] = {}
     for right, legs in by_right.items():
         shorts = [l for l in legs if l.side is Side.SELL]
         longs = [l for l in legs if l.side is Side.BUY]
@@ -164,8 +164,9 @@ def verify_defined_risk(proposal: Proposal) -> float | None:
             continue
         if len(shorts) != len(longs):
             return None  # naked or ratioed — cannot verify, must be blocked upstream
+        side_width = 0.0
         for short in shorts:
-            # the protective long on the same side, furthest from the money
+            # the protective long, further out of the money than the short
             if right is Right.PUT:
                 covers = [l for l in longs if l.strike < short.strike]
             else:
@@ -173,11 +174,33 @@ def verify_defined_risk(proposal: Proposal) -> float | None:
             if not covers:
                 return None
             nearest = min(covers, key=lambda l: abs(l.strike - short.strike))
-            total_width += abs(short.strike - nearest.strike) * short.qty
+            side_width += abs(short.strike - nearest.strike) * short.qty
+        width_by_right[right] = side_width
 
-    if total_width == 0:
+    if not width_by_right:
         return None
-    return total_width * CONTRACT_SIZE - max(proposal.net_credit, 0.0)
+
+    # A two-sided structure (iron condor) can only finish in the money on ONE side,
+    # provided the short strikes do not overlap. Summing both wings would overstate
+    # max loss by ~2x and mis-size every downstream percentage cap.
+    #
+    # Overlapping shorts (a "guts"/inverted structure) CAN lose on both sides, so we
+    # fall back to the sum there — the conservative reading.
+    if len(width_by_right) == 2:
+        highest_short_put = max(
+            (l.strike for l in by_right[Right.PUT] if l.side is Side.SELL), default=float("-inf")
+        )
+        lowest_short_call = min(
+            (l.strike for l in by_right[Right.CALL] if l.side is Side.SELL), default=float("inf")
+        )
+        if highest_short_put < lowest_short_call:
+            worst_side = max(width_by_right.values())  # non-overlapping: one side only
+        else:
+            worst_side = sum(width_by_right.values())  # inverted: both sides can lose
+    else:
+        worst_side = sum(width_by_right.values())
+
+    return worst_side * CONTRACT_SIZE - max(proposal.net_credit, 0.0)
 
 
 def has_uncovered_short(proposal: Proposal) -> bool:
