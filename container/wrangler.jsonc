@@ -1,0 +1,44 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "alpaca-agent-runner",
+  "account_id": "522e035ab8637119c0bf60363e5704ca",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-09-24",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true },
+
+  // The committee's runtime. amd64 — Cloudflare Containers do not run arm64.
+  "containers": [
+    {
+      "class_name": "Committee",
+      "image": "../agent/Dockerfile",
+      "image_build_context": "../agent",
+      "instance_type": "standard",
+      "max_instances": 1
+    }
+  ],
+  "durable_objects": {
+    "bindings": [{ "name": "COMMITTEE", "class_name": "Committee" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Committee"] }],
+
+  // Schedule lives here, not in a cron inside the image: visible in config and changeable
+  // without a rebuild. Cron is UTC. US equities trade 13:30–20:00 UTC (09:30–16:00 ET) while
+  // the US is on daylight time, which covers the whole competition window.
+  //
+  // Every 30 minutes from 13:30 to 19:30 UTC, weekdays. The 20:00 slot is deliberately
+  // omitted — the NEAR_CLOSE gate blocks new positions inside the last 15 minutes anyway,
+  // so a sitting then could only ever refuse.
+  "triggers": {
+    "crons": ["0,30 14-19 * * 1-5", "30 13 * * 1-5"]
+  },
+
+  "vars": {
+    "API_ORIGIN": "https://alpaca-agent-api.domfly.workers.dev",
+    "UNIVERSE": "QQQ,SPY,IWM",
+    // Starts in dry run. Flipped to "false" on launch day, deliberately and visibly.
+    "DRY_RUN": "true",
+    "MAX_TRADES": "2",
+    "KILL_SWITCH": "false"
+  }
+}

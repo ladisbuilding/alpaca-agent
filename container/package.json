@@ -1,0 +1,15 @@
+{
+  "name": "alpaca-agent-runner",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "tail": "wrangler tail"
+  },
+  "dependencies": { "@cloudflare/containers": "^0.3.7" },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260820.1",
+    "typescript": "^5.7.2",
+    "wrangler": "^4.125.0"
+  }
+}

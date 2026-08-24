@@ -20,7 +20,11 @@ from typing import Any, AsyncIterator
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
-DEFAULT_SERVER = str(Path(__file__).resolve().parents[2] / ".venv" / "bin" / "alpaca-mcp-server")
+# In the container the MCP server is on PATH (pip-installed); locally it lives in the venv.
+# ALPACA_MCP_BIN lets the container override without a code change.
+DEFAULT_SERVER = os.environ.get("ALPACA_MCP_BIN") or str(
+    Path(__file__).resolve().parents[2] / ".venv" / "bin" / "alpaca-mcp-server"
+)
 
 
 @dataclass(frozen=True)
