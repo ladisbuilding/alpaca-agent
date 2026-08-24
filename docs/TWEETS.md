@@ -110,6 +110,26 @@ and tuning all still happen during the week — and all of it is postable.
 >
 > not "5 minutes because 5 is a nice number"
 
+**found the bug in my own risk gate**
+> wrote a gate that recomputes a trade's max loss from its own geometry
+>
+> then it flagged my iron condor builder
+>
+> turns out i was summing both wings. a condor can only lose on ONE side, the strikes
+> don't overlap
+>
+> my own safety check caught me overstating risk 2x. worked exactly as intended, just
+> not on who i expected
+
+**conservative fills by default**
+> the strategy prices every structure at the worst realistic fill. sell at bid, buy at ask
+>
+> not mid
+>
+> if it only clears the threshold at mid it won't clear it live
+>
+> paper trading flatters you enough already
+
 ## Tier 3 — filler. Fine if a day is quiet.
 
 - only 3 paper accounts per alpaca login. burned one on dev, one stays sealed for the submission
@@ -129,6 +149,9 @@ and tuning all still happen during the week — and all of it is postable.
 ---
 
 ## Log
+
+**2026-08-24 (later)** — added: found-bug-in-own-gate, conservative-fills. Strategy layer live
+against the real QQQ chain; 59 tests.
 
 **2026-08-24** — bank started. Captured: greeks-at-n=2, ALPACA_TOOLSETS least-privilege,
 best-of-288, paper-p&l-lies, p&l-is-1-of-5, misreported-risk gate, dedup lifecycle.

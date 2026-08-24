@@ -92,3 +92,32 @@ rule); (3) budget a full day for the submission package (video + slides + cover 
   4. **No account-naming rule exists.** Judges identify the account by **ID**.
   5. Teams 1–6. Enrolment now **2,080**.
 - ⚠️ **3-paper-account cap discovered.** 2 of 3 used; the last slot is reserved for launch day.
+
+### 2026-08-24 (later still) — strategy layer built and verified on the live chain
+- **`agent/src/committee/chain.py`** — OCC symbol parsing, Alpaca snapshot parsing, liquidity
+  filtering, delta-based strike selection, wing selection. Contracts arriving **without greeks**
+  (deep ITM) survive parsing with `delta=None` rather than being dropped, so callers can see how
+  much of a chain is genuinely usable.
+- **`agent/src/committee/strategy.py`** — iron condor, credit verticals (put = bullish, call =
+  bearish), debit verticals (the directional sleeve). ⭐ **Default fill assumption is CONSERVATIVE**
+  (sell at bid, buy at ask). A structure that only clears its thresholds at mid will not clear them
+  live — and paper fills already flatter you.
+- ⭐ **Found and fixed a real correctness bug in my own gate:** `verify_defined_risk` summed wing
+  widths across puts AND calls, overstating an iron condor's max loss ~2x. Non-overlapping shorts
+  can only finish ITM on one side ⇒ max loss is the **widest side**, not the sum. Inverted/"guts"
+  structures still sum (they genuinely can lose both sides). Would have mis-sized every downstream
+  percentage cap.
+- **Debit structures are now verified too.** `verify_defined_risk` returns None for them (the short
+  sits further OTM than the long, so there is no protective leg to measure), which left them
+  entirely unchecked. A debit vertical's max loss IS the debit — now asserted.
+- ✅ **59 tests passing.** ✅ **Live smoke (`agent/scripts/smoke_chain.py`) builds all 5 structures
+  from the real QQQ chain** on `PA35CQR61R2Q`: 1000 contracts parsed, ~285 with greeks, ~233 pass
+  liquidity; 16-delta targets resolve to **put 699 (Δ−0.148) / call 713 (Δ+0.136)** with real bids.
+  Smoke now queries **Alpaca's `/v2/clock`** instead of assuming market hours (half-days, holidays).
+- ⚠️⚠️ **OPEN QUESTION for Tuesday — the thresholds are untested in daylight.** On after-hours
+  quotes the gates block nearly everything: `WIDE_SPREAD` at 16.8% (limit 15%) and `THIN_CREDIT` at
+  7.3% (floor 10%). That is *probably* an after-hours artifact — spreads widen and quotes go stale
+  once the book empties — but it might mean `max_bid_ask_pct` / `min_credit_to_max_loss` are simply
+  too strict. **Do not tune them off closed-market data.** Re-run the smoke during Tuesday's session
+  and set them from what a live book actually offers. A gate that blocks 100% of trades is as broken
+  as one that blocks none.
