@@ -217,3 +217,34 @@ rule); (3) budget a full day for the submission package (video + slides + cover 
   cycle to `runs/`, which becomes the api's source of truth and the dashboard feed.
   ⭐ **Dedup fingerprints are read back from prior run records on disk**, so a restarted container
   does not forget what it already traded and re-enter the same structure.
+
+### 2026-08-24 (cont.) — api + dashboard DEPLOYED
+- ✅ **`api/` — Hono on Cloudflare Workers + D1. LIVE: `https://alpaca-agent-api.domfly.workers.dev`**
+  `POST /cycles` ingests a cycle record; `GET /cycles`, `/cycles/:id`, `/latest`, `/summary`,
+  `/refusals` serve it. Public read (judges click without a login), shared-secret write.
+  **D1 (`alpaca-agent`, id 8ac0e776-…) not fleet Postgres** — a deployed Worker could not reach fleet
+  Postgres in Aug, exactly the failure that would bite mid-competition. Records stored as JSON with
+  columns only for what we filter/aggregate, so a new committee role needs no migration.
+  ⭐ **`/summary` reports `distinct_structures_traded` NEXT TO `executed_decision_rows`.** They should
+  match; divergence means the same structure was entered twice and the dedup gate has a hole.
+  Surfaced rather than averaged away — the direct answer to $2,015→$89.
+- ✅ **`www/` — TanStack Start on Workers. LIVE: `https://alpaca-agent.domfly.workers.dev`**
+  **This is the hackathon's required Application URL.**
+- ⭐⭐ **Design: three typographic voices, one per speaker** — Bodoni Moda masthead (engraved
+  certificate / institutional finance), Source Serif for the agents' prose (argument is
+  human-shaped), IBM Plex Mono for the deterministic layer (gate names, strikes, verdicts).
+  **The typography encodes who is talking.** Refusals render as a rotated mono stamp across a paper
+  document panel — code visibly overriding rhetoric. Deliberately NOT a KPI-row dashboard.
+- ⚠️⚠️ **Worker-to-Worker fetch on workers.dev LOOPS BACK AND 404s.** SSR loader fetching
+  `alpaca-agent-api.domfly.workers.dev` from the www Worker returned **404** while the same URL
+  returned 200 from curl. **Fix: a service binding** (`services: [{binding: "API", service:
+  "alpaca-agent-api"}]`) + a `/api/*` proxy in `src/worker.ts`. Also removes the public hop and makes
+  everything same-origin, so CORS stops applying. → [[reference_worker_to_worker_fetch_needs_service_binding]]
+- ⚠️ **A silent catch turned a broken fetch into an empty state.** `fetchJson` swallowed the 404 and
+  the page said *"No sittings on record yet"* — reading as "the agent has done nothing" rather than
+  "the dashboard is broken". It now returns the error and the page distinguishes the two.
+  A 404 on `/latest` before the first sitting is still a legitimate empty state; only a `/summary`
+  failure means the record is genuinely unreachable.
+- Data loads client-side and refreshes every 60s — a relative URL cannot resolve during SSR, and a
+  dashboard watched during market hours wants to refresh itself.
+- ⚠️ `@cloudflare/workers-types` must be **^5.x** with wrangler 4.125 (v4 fails ERESOLVE).

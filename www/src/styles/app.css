@@ -1,0 +1,124 @@
+@import 'tailwindcss';
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   THE COMMITTEE — design tokens
+
+   Three typographic voices, one per speaker. This is the page's signature and it
+   encodes something true about the product rather than decorating it:
+
+     Bodoni Moda    the masthead — engraved-certificate, institutional finance
+     Source Serif   the agents' prose — argument is human-shaped, reads as a document
+     IBM Plex Mono  the deterministic layer — gate names, strikes, tickers, verdicts
+
+   When a gate blocks a trade, the machine voice is set in mono and stamped over the
+   argument. Code overriding rhetoric, made visible in the type itself.
+   ───────────────────────────────────────────────────────────────────────────── */
+
+:root {
+  --ink: #12161f;        /* ground */
+  --ink-raised: #1a2130; /* panels */
+  --ink-line: #2a3244;   /* hairlines */
+  --paper: #f2efe6;      /* transcript panels — warm, but against a dark ground */
+  --paper-edge: #ded9cb;
+  --stamp: #c1362f;      /* veto */
+  --brass: #b4894a;      /* approved / accent */
+  --text: #e8eaf0;       /* body ink on dark */
+  --text-paper: #1b1a17; /* body ink on paper */
+  --muted: #8a93a6;      /* eyebrows and captions ONLY, never body copy */
+}
+
+html {
+  background: var(--ink);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  margin: 0;
+  font-family: 'Source Serif 4', Georgia, serif;
+  font-size: 17px;
+  line-height: 1.6;
+}
+
+/* Type roles ─────────────────────────────────────────────────────────────── */
+
+.masthead {
+  font-family: 'Bodoni Moda', 'Didot', Georgia, serif;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 0.92;
+}
+
+.machine {
+  font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+.eyebrow {
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* Structural devices ──────────────────────────────────────────────────────── */
+
+.rule {
+  border: 0;
+  border-top: 1px solid var(--ink-line);
+}
+
+.panel {
+  background: var(--ink-raised);
+  border: 1px solid var(--ink-line);
+}
+
+/* A transcript is a document, so it sits on paper. */
+.document {
+  background: var(--paper);
+  color: var(--text-paper);
+  border: 1px solid var(--paper-edge);
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.4), 0 18px 40px -28px rgba(0, 0, 0, 0.9);
+}
+
+/* The signature: a deterministic verdict stamped across the argument. */
+.stamp {
+  font-family: 'IBM Plex Mono', monospace;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  border: 2px solid currentColor;
+  border-radius: 2px;
+  padding: 0.35rem 0.7rem;
+  display: inline-block;
+  transform: rotate(-3deg);
+  opacity: 0.92;
+}
+
+.stamp-refused { color: var(--stamp); }
+.stamp-approved { color: var(--brass); }
+
+/* Speaker labels in the transcript. */
+.speaker {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #6b6558;
+}
+
+a { color: inherit; }
+
+*:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

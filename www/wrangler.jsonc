@@ -1,0 +1,13 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "alpaca-agent",
+  "account_id": "522e035ab8637119c0bf60363e5704ca",
+  "compatibility_date": "2025-09-24",
+  "compatibility_flags": ["nodejs_compat"],
+  "main": "src/worker.ts",
+  "observability": { "enabled": true },
+  // Service binding rather than a public fetch: a Worker subrequest to another
+  // workers.dev hostname on the same account loops back and 404s. The binding also
+  // skips the public internet hop, and /api/* below becomes same-origin (no CORS).
+  "services": [{ "binding": "API", "service": "alpaca-agent-api" }]
+}

@@ -192,6 +192,27 @@ and tuning all still happen during the week — and all of it is postable.
 >
 > paper trading flatters you enough already
 
+**a worker can't fetch another worker**
+> my dashboard's SSR loader fetched my api worker. 404
+>
+> same url from curl: 200
+>
+> worker-to-worker on workers.dev loops back to the caller. needs a service binding
+>
+> the tell was my own error handling: i'd written catch → return null, so a broken
+> fetch rendered as "no data yet"
+>
+> looked like the agent had done nothing. it had done plenty
+
+**typography as a speaker label**
+> the dashboard uses three typefaces and each one means something
+>
+> bodoni for the masthead. serif for what the agents argue. mono for the deterministic layer
+>
+> so when a risk gate kills a trade, the verdict is set in mono and stamped across the argument
+>
+> code overriding rhetoric, visible in the type
+
 ## Tier 3 — filler. Fine if a day is quiet.
 
 - only 3 paper accounts per alpaca login. burned one on dev, one stays sealed for the submission
