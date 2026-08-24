@@ -54,6 +54,17 @@ and tuning all still happen during the week — and all of it is postable.
 >
 > risk control at the infra layer beats risk control in a system prompt
 
+**the least-privilege thing, now with numbers**
+> proved it instead of claiming it
+>
+> research agents (scouts, bull, bear, risk officer): 39 mcp tools. zero can place an order
+>
+> executor: 41 tools, 6 of them can trade
+>
+> same server, different ALPACA_TOOLSETS
+>
+> the bear agent isn't *told* not to trade. it has no hands
+
 **paper p&l lies**
 > a bot of mine once reported $2,015 profit. 100% win rate
 >

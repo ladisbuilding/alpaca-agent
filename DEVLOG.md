@@ -121,3 +121,22 @@ rule); (3) budget a full day for the submission package (video + slides + cover 
   too strict. **Do not tune them off closed-market data.** Re-run the smoke during Tuesday's session
   and set them from what a live book actually offers. A gate that blocks 100% of trades is as broken
   as one that blocks none.
+
+### 2026-08-24 (cont.) — MCP wired; least-privilege PROVEN, not asserted
+- Installed `alpaca-mcp-server` **2.3.0** into `agent/.venv` (pip works; `uv` not required).
+  Entry point `alpaca-mcp-server`; supports `--transport stdio|streamable-http|sse`.
+  ⭐ **`streamable-http` matters** — the server can be hosted and reached over HTTP, which is what
+  makes the Cloudflare Container plan work (and would also suit Anthropic's MCP URL connector).
+- **`agent/scripts/discover_tools.py`** connects over stdio and enumerates the REAL v2 tool surface.
+  v2 renamed everything, so role definitions are built from what the server reports, never from docs.
+- ⭐⭐ **Least-privilege verified end to end:**
+  - research scope (`stock-data,options-data,news,assets,account`) → **39 tools**
+  - executor scope (`trading,options-data,assets,account`) → **41 tools**
+  - unrestricted → **72 tools**
+  - order-placing tools visible to the **executor**: `place_option_order`, `place_stock_order`,
+    `place_crypto_order`, `cancel_order_by_id`, `cancel_all_orders`, `replace_order_by_id`
+  - order-placing tools visible to **research roles: NONE**
+  ⇒ **The Bull/Bear/Scouts/Risk Officer cannot place a trade — the tool is absent from their
+  context.** The script asserts this and fails loudly if it ever stops holding.
+- ⭐ **`place_option_order` accepts single-leg AND multi-leg** ⇒ iron condors go through MCP directly,
+  no REST fallback needed.
