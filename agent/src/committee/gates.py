@@ -268,6 +268,19 @@ def evaluate(
             f"geometry implies ${derived:,.2f}. Refusing to size off an under-reported number.",
         )
 
+    # A debit structure's max loss is exactly the debit paid — no geometry needed. This is
+    # the other half of the check above: verify_defined_risk() returns None for debit
+    # verticals (the short sits further OTM than the long, so there is no protective leg
+    # to measure against), which would otherwise leave them entirely unverified.
+    if proposal.net_credit < 0:
+        debit = abs(proposal.net_credit)
+        if abs(proposal.max_loss - debit) > 0.01:
+            result.block(
+                "MISREPORTED_RISK",
+                f"Debit structure paid ${debit:,.2f} but claims max loss "
+                f"${proposal.max_loss:,.2f}. On a debit spread they are the same number.",
+            )
+
     # ── PER-TRADE SIZE ─────────────────────────────────────────────────────────────
     per_trade_cap = portfolio.equity * config.max_loss_per_trade_pct
     if proposal.max_loss > per_trade_cap:
