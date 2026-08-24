@@ -1,0 +1,432 @@
+"""The committee cycle — one full pass from market snapshot to decision record.
+
+    snapshot -> scouts nominate -> deterministic build -> PRE-GATE
+             -> bull / bear debate -> risk officer -> FINAL GATE -> executor
+             -> decision record
+
+Two ordering decisions are load-bearing:
+
+1. **The gates run BEFORE the debate.** A structure the deterministic layer has already
+   rejected is not worth $3 of argument. Checking the cheap thing first is both correct and
+   economical, and the record still shows exactly why it was refused.
+
+2. **Everything is built and argued from ONE snapshot.** The first live Bear turn caught its
+   input being stale and argued about a trade that no longer existed. Passing a single
+   immutable snapshot through the whole cycle is what prevents that.
+
+A cycle that places no trade is a normal, frequent, successful outcome. The decision record
+for a refusal is as complete as the record for a fill — "why we didn't" is the more
+interesting half of an autonomous trader's log, and it is what the dashboard leads with.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import json
+from dataclasses import asdict, dataclass, field
+from datetime import date, datetime
+from typing import Any
+
+from anthropic import AsyncAnthropic
+
+from .chain import LiquidityFilter, expiries_within
+from .gates import GateResult, Proposal, Right, RiskConfig, evaluate, summarize
+from .llm import Turn, run_turn
+from .market import MarketSnapshot
+from .mcp_client import McpCredentials, scoped_session
+from .roles import (
+    BEAR,
+    BULL,
+    EXECUTOR,
+    PORTFOLIO_MANAGER,
+    RISK_OFFICER,
+    SCOUT_DIRECTIONAL,
+    SCOUT_PREMIUM,
+    Role,
+)
+from .strategy import (
+    DirectionalConfig,
+    IncomeConfig,
+    build_credit_vertical,
+    build_debit_vertical,
+    build_iron_condor,
+)
+
+PRICES = {"claude-opus-5": (5.0, 25.0), "claude-sonnet-5": (3.0, 15.0)}
+
+
+@dataclass
+class Nomination:
+    underlying: str
+    sleeve: str  # "income" | "directional"
+    direction: str | None  # "bullish" | "bearish" | None
+    reason: str
+    conviction: int
+    source: str  # which scout
+
+
+@dataclass
+class Deliberation:
+    """One structure's full journey through the committee."""
+
+    nomination: Nomination
+    strategy: str
+    structure: dict[str, Any]
+    pre_gate: dict[str, Any]
+    debated: bool = False
+    bull: str | None = None
+    bear: str | None = None
+    bear_verdict: str | None = None
+    risk_officer: str | None = None
+    pm_decision: str | None = None
+    final_gate: dict[str, Any] | None = None
+    executed: bool = False
+    execution_note: str | None = None
+    evidence: list[str] = field(default_factory=list)
+
+
+@dataclass
+class CycleRecord:
+    """The artifact. Written to disk, served by the api, rendered by the dashboard, and
+    mined for the daily post."""
+
+    started_at: str
+    finished_at: str | None = None
+    dry_run: bool = True
+    market_open: bool = False
+    equity: float = 0.0
+    open_positions: int = 0
+    universe: list[str] = field(default_factory=list)
+    nominations: list[dict[str, Any]] = field(default_factory=list)
+    deliberations: list[dict[str, Any]] = field(default_factory=list)
+    turns: list[dict[str, Any]] = field(default_factory=list)
+    trades_placed: int = 0
+    cost_usd: float = 0.0
+    notes: list[str] = field(default_factory=list)
+
+    def to_json(self) -> str:
+        return json.dumps(asdict(self), indent=2, default=str)
+
+
+def _record_turn(record: CycleRecord, turn: Turn) -> None:
+    prices = PRICES.get(turn.model, (5.0, 25.0))
+    record.cost_usd += turn.cost_usd(*prices)
+    record.turns.append(
+        {
+            "role": turn.role,
+            "model": turn.model,
+            "text": turn.text,
+            "tool_calls": len(turn.tool_calls),
+            "evidence": turn.evidence,
+            "refused": turn.refused,
+            "error": turn.error,
+            "input_tokens": turn.input_tokens,
+            "output_tokens": turn.output_tokens,
+            "cache_read_tokens": turn.cache_read_tokens,
+        }
+    )
+
+
+def _gate_dict(result: GateResult) -> dict[str, Any]:
+    return {
+        "approved": result.approved,
+        "blocked_by": result.blocked_by,
+        "reasons": result.reasons,
+        "warnings": result.warnings,
+        "summary": summarize(result),
+    }
+
+
+def _structure_dict(p: Proposal) -> dict[str, Any]:
+    return {
+        "underlying": p.underlying,
+        "strategy": p.strategy,
+        "expiry": p.expiry.isoformat(),
+        "legs": [
+            {
+                "symbol": l.symbol,
+                "side": l.side.value,
+                "qty": l.qty,
+                "right": l.right.value,
+                "strike": l.strike,
+            }
+            for l in p.legs
+        ],
+        "net_credit": round(p.net_credit, 2),
+        "max_loss": round(p.max_loss, 2),
+        "max_profit": round(p.max_profit, 2),
+        "bid_ask_pct": round(p.bid_ask_pct, 4),
+        "fingerprint": p.fingerprint,
+    }
+
+
+def parse_nominations(text: str, source: str, default_sleeve: str) -> list[Nomination]:
+    """Pull nominations out of a scout's reply.
+
+    Scouts write prose, so this is tolerant by design: a scout that returns nothing usable
+    yields no nominations, which is a valid and common outcome rather than an error. Being
+    strict here would turn a chatty reply into a crashed cycle.
+    """
+    out: list[Nomination] = []
+    for raw in text.splitlines():
+        line = raw.strip().lstrip("-*0123456789. ").strip()
+        if not line or len(line) < 4:
+            continue
+        head = line.split()[0].strip("*:,()").upper()
+        if not (1 <= len(head) <= 5 and head.isalpha()):
+            continue
+        if head in {"NONE", "NO", "I", "THE", "A", "AN", "IF", "IT", "AT", "AS", "TO"}:
+            continue
+        lowered = line.lower()
+        direction = "bearish" if "bearish" in lowered else ("bullish" if "bullish" in lowered else None)
+        conviction = 3
+        for token in line.replace("/", " ").split():
+            if token.isdigit() and 1 <= int(token) <= 5:
+                conviction = int(token)
+                break
+        out.append(
+            Nomination(
+                underlying=head,
+                sleeve=default_sleeve,
+                direction=direction,
+                reason=line[:300],
+                conviction=conviction,
+                source=source,
+            )
+        )
+    return out[:3]
+
+
+def build_for(
+    nom: Nomination, snapshot: MarketSnapshot, income: IncomeConfig, directional: DirectionalConfig
+) -> Proposal | None:
+    """Deterministic construction. The scout chose the symbol and the stance; every strike
+    below comes from code reading the live chain."""
+    chain = snapshot.chain(nom.underlying)
+    if not chain:
+        return None
+    liquidity = LiquidityFilter()
+    cfg = income if nom.sleeve == "income" else directional
+    expiries = expiries_within(chain, snapshot.today, cfg.min_dte, cfg.max_dte)
+    if not expiries:
+        return None
+    expiry = expiries[0]
+
+    if nom.sleeve == "income":
+        if nom.direction == "bullish":
+            return build_credit_vertical(chain, expiry, Right.PUT, income, liquidity)
+        if nom.direction == "bearish":
+            return build_credit_vertical(chain, expiry, Right.CALL, income, liquidity)
+        return build_iron_condor(chain, expiry, income, liquidity)
+
+    right = Right.PUT if nom.direction == "bearish" else Right.CALL
+    return build_debit_vertical(chain, expiry, right, directional, liquidity)
+
+
+async def _scout(
+    client: AsyncAnthropic,
+    role: Role,
+    creds: McpCredentials,
+    snapshot: MarketSnapshot,
+    universe: list[str],
+    record: CycleRecord,
+    sleeve: str,
+) -> list[Nomination]:
+    context = "\n".join(snapshot.describe(u) for u in universe)
+    prompt = (
+        f"Snapshot taken {snapshot.taken_at:%Y-%m-%d %H:%M} UTC. Market "
+        f"{'OPEN' if snapshot.is_open else 'CLOSED'}.\n"
+        f"Equity ${snapshot.portfolio.equity:,.0f}, "
+        f"{len(snapshot.portfolio.open_positions)} open position(s).\n\n"
+        f"Universe:\n{context}\n\n"
+        "Nominate from this universe only. One nomination per line, starting with the ticker. "
+        "Return nothing if nothing qualifies."
+    )
+    try:
+        async with scoped_session(role.toolsets, creds) as (session, schemas):
+            turn = await run_turn(client, role, session, schemas, prompt)
+    except Exception as exc:  # noqa: BLE001 — an MCP server that fails to start, etc.
+        record.notes.append(f"{role.name} unavailable: {type(exc).__name__}: {exc}")
+        return []
+    _record_turn(record, turn)
+    if turn.error:
+        record.notes.append(f"{role.name} errored: {turn.error}")
+        return []
+    return parse_nominations(turn.text, role.name, sleeve)
+
+
+async def run_cycle(
+    snapshot: MarketSnapshot,
+    creds: McpCredentials,
+    anthropic_key: str,
+    *,
+    universe: list[str],
+    risk: RiskConfig | None = None,
+    income: IncomeConfig | None = None,
+    directional: DirectionalConfig | None = None,
+    dry_run: bool = True,
+    kill_switch: bool = False,
+    recent_fingerprints: list[tuple[str, date]] | None = None,
+    max_trades: int = 2,
+) -> CycleRecord:
+    risk = risk or RiskConfig()
+    income = income or IncomeConfig()
+    directional = directional or DirectionalConfig()
+    recent = recent_fingerprints or []
+    now = datetime.now().astimezone()
+
+    record = CycleRecord(
+        started_at=snapshot.taken_at.isoformat(),
+        dry_run=dry_run,
+        market_open=snapshot.is_open,
+        equity=snapshot.portfolio.equity,
+        open_positions=len(snapshot.portfolio.open_positions),
+        universe=universe,
+    )
+    client = AsyncAnthropic(api_key=anthropic_key)
+
+    # ── 1. Scouts nominate (concurrently — they are independent by design) ─────────
+    premium, direction = await asyncio.gather(
+        _scout(client, SCOUT_PREMIUM, creds, snapshot, universe, record, "income"),
+        _scout(client, SCOUT_DIRECTIONAL, creds, snapshot, universe, record, "directional"),
+    )
+    nominations = premium + direction
+    nominations.sort(key=lambda n: -n.conviction)
+    record.nominations = [asdict(n) for n in nominations]
+    if not nominations:
+        record.notes.append("No nominations. A quiet cycle is a legitimate outcome.")
+        record.finished_at = datetime.now().astimezone().isoformat()
+        return record
+
+    # ── 2. Deterministic build + PRE-GATE, before spending money on debate ─────────
+    deliberations: list[Deliberation] = []
+    built: list[tuple[Deliberation, Proposal]] = []  # carried forward, never rebuilt
+    for nom in nominations:
+        proposal = build_for(nom, snapshot, income, directional)
+        if proposal is None:
+            deliberations.append(
+                Deliberation(
+                    nomination=nom,
+                    strategy="none",
+                    structure={},
+                    pre_gate={"approved": False, "blocked_by": ["NO_STRUCTURE"],
+                              "reasons": [f"No sound structure available on {nom.underlying}."],
+                              "warnings": [], "summary": "BLOCKED by NO_STRUCTURE"},
+                )
+            )
+            continue
+        gate = evaluate(
+            proposal, snapshot.portfolio, risk, now,
+            kill_switch=kill_switch, market_open=snapshot.is_open,
+            recent_fingerprints=recent,
+        )
+        deliberation = Deliberation(
+            nomination=nom,
+            strategy=proposal.strategy,
+            structure=_structure_dict(proposal),
+            pre_gate=_gate_dict(gate),
+        )
+        deliberations.append(deliberation)
+        built.append((deliberation, proposal))
+
+    # Debate only what the deterministic layer already cleared, highest conviction first.
+    survivors = [(d, p) for d, p in built if d.pre_gate["approved"]][:max_trades]
+
+    if not survivors:
+        record.notes.append(
+            "Every candidate was refused by the deterministic gates before debate — "
+            "no model tokens spent arguing about structures that could not be taken."
+        )
+
+    # ── 3. Debate the survivors ───────────────────────────────────────────────────
+    for deliberation, proposal in survivors:
+        deliberation.debated = True
+        brief = (
+            f"Snapshot {snapshot.taken_at:%Y-%m-%d %H:%M} UTC "
+            f"(all figures below come from this one snapshot).\n"
+            f"Nominated by {deliberation.nomination.source}: {deliberation.nomination.reason}\n\n"
+            f"Structure: {json.dumps(deliberation.structure, indent=2)}\n\n"
+            f"Book: equity ${snapshot.portfolio.equity:,.0f}, "
+            f"{len(snapshot.portfolio.open_positions)} open position(s), "
+            f"${snapshot.portfolio.deployed_risk:,.0f} risk deployed.\n"
+            f"Deterministic gates: {deliberation.pre_gate['summary']}"
+        )
+
+        async with scoped_session(BULL.toolsets, creds) as (session, schemas):
+            bull_turn = await run_turn(client, BULL, session, schemas, brief)
+        _record_turn(record, bull_turn)
+        deliberation.bull = bull_turn.text
+        deliberation.evidence += bull_turn.evidence
+
+        async with scoped_session(BEAR.toolsets, creds) as (session, schemas):
+            bear_turn = await run_turn(
+                client, BEAR, session, schemas,
+                brief + f"\n\nThe Bull argues:\n{bull_turn.text}",
+            )
+        _record_turn(record, bear_turn)
+        deliberation.bear = bear_turn.text
+        deliberation.bear_verdict = "KILL" if "KILL" in bear_turn.text.upper() else "ALLOW"
+        deliberation.evidence += bear_turn.evidence
+
+        async with scoped_session(RISK_OFFICER.toolsets, creds) as (session, schemas):
+            ro_turn = await run_turn(
+                client, RISK_OFFICER, session, schemas,
+                brief + f"\n\nBull:\n{bull_turn.text}\n\nBear:\n{bear_turn.text}",
+            )
+        _record_turn(record, ro_turn)
+        deliberation.risk_officer = ro_turn.text
+
+        async with scoped_session(PORTFOLIO_MANAGER.toolsets, creds) as (session, schemas):
+            pm_turn = await run_turn(
+                client, PORTFOLIO_MANAGER, session, schemas,
+                brief
+                + f"\n\nBull:\n{bull_turn.text}\n\nBear:\n{bear_turn.text}"
+                + f"\n\nRisk Officer:\n{ro_turn.text}\n\n"
+                "Decide: TAKE or PASS, and a quantity.",
+            )
+        _record_turn(record, pm_turn)
+        deliberation.pm_decision = pm_turn.text
+
+        if "PASS" in pm_turn.text.upper()[:400] or deliberation.bear_verdict == "KILL":
+            deliberation.final_gate = {
+                "approved": False,
+                "blocked_by": ["COMMITTEE"],
+                "reasons": ["The committee declined — see the PM decision and the Bear's verdict."],
+                "warnings": [], "summary": "BLOCKED by COMMITTEE",
+            }
+            continue
+
+        # ── 4. FINAL GATE — deterministic, unconditional, no model in the loop ─────
+        final = evaluate(
+            proposal, snapshot.portfolio, risk, datetime.now().astimezone(),
+            kill_switch=kill_switch, market_open=snapshot.is_open,
+            recent_fingerprints=recent,
+        )
+        deliberation.final_gate = _gate_dict(final)
+        if not final.approved:
+            continue
+
+        # ── 5. Execute ────────────────────────────────────────────────────────────
+        if dry_run:
+            deliberation.execution_note = "DRY RUN — approved but not sent to the broker."
+            continue
+
+        async with scoped_session(EXECUTOR.toolsets, creds) as (session, schemas):
+            exec_turn = await run_turn(
+                client, EXECUTOR, session, schemas,
+                "Place exactly this structure as ONE multi-leg order via place_option_order. "
+                "Do not alter strikes, quantity or structure.\n\n"
+                + json.dumps(deliberation.structure, indent=2),
+            )
+        _record_turn(record, exec_turn)
+        deliberation.execution_note = exec_turn.text
+        placed = any(c.tool == "place_option_order" and not c.result.startswith(("ERROR", "DENIED"))
+                     for c in exec_turn.tool_calls)
+        deliberation.executed = placed
+        if placed:
+            record.trades_placed += 1
+            recent.append((proposal.fingerprint, proposal.expiry))
+
+    record.deliberations = [asdict(d) for d in deliberations]
+    record.finished_at = datetime.now().astimezone().isoformat()
+    return record

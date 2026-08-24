@@ -21,7 +21,23 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-MODEL = "claude-opus-5"
+# Tiered by whether a judge reads the output, not by role seniority.
+#
+# The advocates' and auditor's prose IS the deliverable — debate transcripts are what the
+# video, the dashboard and the social posts are built from, and Creativity and Presentation
+# are two of the five judged criteria. Those roles get the strongest model.
+#
+# Scouts and the executor produce work nobody reads: a nomination is a symbol plus a
+# sentence, and the executor places an order the gates already approved.
+#
+# Measured at ~132k input / ~8k output per turn: ~$0.85 on Opus 5 vs ~$0.52 on Sonnet 5.
+# Sonnet rather than Haiku is a deliberate call (Luke, 2026-08-24) — a scout that misses a
+# good nomination costs the committee a trade it never gets to debate, and a weak nomination
+# poisons an otherwise good debate. The screening step is cheap to run and expensive to get
+# wrong, so it gets a capable model even though nobody reads its prose.
+MODEL_JUDGED = "claude-opus-5"      # $5/$25 per 1M
+MODEL_INTERNAL = "claude-sonnet-5"  # $3/$15 per 1M ($2/$10 intro through 2026-08-31)
+MODEL = MODEL_JUDGED  # default for anything not explicitly tiered
 
 # Roles that must never be able to trade. Note the absence of `trading`.
 RESEARCH_TOOLSETS = "stock-data,options-data,news,assets,account"
@@ -42,6 +58,7 @@ class Role:
     system: str
     effort: str = "high"
     max_tokens: int = 8000
+    model: str = MODEL_JUDGED
 
     @property
     def can_trade(self) -> bool:
@@ -65,6 +82,7 @@ SCOUT_PREMIUM = Role(
     name="scout_premium",
     toolsets=RESEARCH_TOOLSETS,
     effort="medium",
+    model=MODEL_INTERNAL,
     system=_SHARED
     + """
 
@@ -89,6 +107,7 @@ SCOUT_DIRECTIONAL = Role(
     name="scout_directional",
     toolsets=RESEARCH_TOOLSETS,
     effort="medium",
+    model=MODEL_INTERNAL,
     system=_SHARED
     + """
 
@@ -209,6 +228,7 @@ EXECUTOR = Role(
     toolsets=EXECUTOR_TOOLSETS,
     effort="low",
     max_tokens=4000,
+    model=MODEL_INTERNAL,
     system=_SHARED
     + """
 
@@ -271,3 +291,6 @@ assert _TRADERS == {"executor"}, (
     f"exactly one role may hold the `trading` toolset; got {_TRADERS or 'none'}. "
     "Every other role must be structurally incapable of placing an order."
 )
+
+# Both tiers are 1M-context, so there is no ceiling to design around. Payload trimming stays
+# in place regardless: it is a cost measure, not a context measure.

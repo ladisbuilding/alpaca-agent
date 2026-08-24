@@ -186,3 +186,34 @@ rule); (3) budget a full day for the submission package (video + slides + cover 
   `trust: "untrusted_tool_output"` — a built-in prompt-injection guard. Good; keep it intact.
 - Anthropic key currently reused from `chaz`. **Luke is issuing a dedicated key** so hackathon
   spend is tracked separately.
+
+### 2026-08-24 (cont.) — FULL CYCLE RUNS END TO END
+- **`agent/src/committee/market.py`** — `MarketSnapshot`, immutable, taken once per cycle. Every role
+  argues from the SAME snapshot (the stale-delta lesson). Fetched over REST, not MCP: MCP returns
+  text shaped for a model, the deterministic layer wants parsed JSON. The agents use MCP throughout,
+  which is where the hackathon requirement lives.
+  ⭐ **Broker legs are collapsed into committee positions** — a 4-leg condor is ONE position, not 4.
+  Counting legs would blow `max_concurrent_positions` after two trades, the same error family as the
+  15-decisions-became-72-trades bug.
+- **`agent/src/committee/cycle.py`** — the orchestration. Two load-bearing ordering decisions:
+  1. ⭐⭐ **Gates run BEFORE the debate.** A structure the deterministic layer already rejected is not
+     worth $3 of argument. The record still shows exactly why it was refused.
+  2. ⭐ **One snapshot through the whole cycle.**
+- **Model tiering (Luke's call): Opus 5 where a judge reads the output** (bull, bear, risk officer,
+  PM, auditor), **Sonnet 5 where nobody does** (scouts, executor). ⚠️ **Sonnet not Haiku** —
+  a scout that misses a nomination costs a trade that never gets debated, and a weak nomination
+  poisons a good debate. Screening is cheap to run and expensive to get wrong.
+- ⭐⭐ **PROMPT CACHING WORKS — cost collapsed.** Breakpoints on the last tool definition and the
+  system block. First full cycle: **$0.24**, with **9,699 fresh input tokens vs 41,430 cache reads
+  (~81% hit rate)** — against $0.86 for a single uncached turn earlier. Week estimate now well under
+  $50 rather than ~$400.
+- ⚠️ **`fallbacks` is NOT universal.** Sonnet 5 returns `400 "'claude-sonnet-5' does not support the
+  fallbacks parameter"`. It is Opus-5 / Fable-5 only, and is now sent only to models that accept it.
+- ⚠️ **One role failing must not end the cycle.** A 400 in a scout killed the entire run via an
+  asyncio TaskGroup. `run_turn` now catches per-turn, records the error on the Turn, and returns;
+  scouts catch session-start failures too. A transient 429 during a session should cost one opinion,
+  not the session. **Essential for a 6-day unattended run.**
+- **`agent/scripts/run_cycle.py`** — dry run by DEFAULT, `--live` explicit. Writes one JSON record per
+  cycle to `runs/`, which becomes the api's source of truth and the dashboard feed.
+  ⭐ **Dedup fingerprints are read back from prior run records on disk**, so a restarted container
+  does not forget what it already traded and re-enter the same structure.

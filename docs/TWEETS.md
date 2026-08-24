@@ -115,6 +115,25 @@ and tuning all still happen during the week — and all of it is postable.
 >
 > turns out "let the llm read the whole chain" has a price
 
+**caching took the cost from $400 to $40**
+> first agent turn cost 86 cents. mostly option chain dumps getting re-sent every loop iteration
+>
+> added prompt cache breakpoints on the tools + system block
+>
+> full 8-role cycle now: $0.24. 9,699 fresh input tokens vs 41,430 cache reads
+>
+> 81% hit rate. same model, same quality
+
+**check the cheap thing first**
+> my committee spends ~$3 in llm calls debating a trade
+>
+> the deterministic risk gates cost $0 and run in microseconds
+>
+> so the gates run FIRST. if the structure is already blocked, nobody debates it
+>
+> "every candidate was refused before debate — no model tokens spent arguing about
+> structures that could not be taken"
+
 ## Tier 2 — good. Process and judgment.
 
 **p&l is 1 of 5**
