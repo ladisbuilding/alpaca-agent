@@ -2,17 +2,28 @@
 
 ## Current State
 
-**Phase:** enrolled; nothing built yet. ⭐ **RESUMING prior work — read CLAUDE.md's "READ THIS FIRST".**
-**Event:** Alpaca × lablab.ai AI Trading Agents Hackathon, 28 Aug – 4 Sep 2026, online.
-**Goal (Luke's words):** *"fun and maybe some professional benefit"* — explicitly NOT chasing the P&L prize.
+**Phase:** dev environment LIVE and verified. ⭐ **FRESH BUILD — do not port old code** (Luke's ruling
+2026-08-24); `archived-projects/` is reading material only. See CLAUDE.md.
+**Event:** Alpaca × lablab.ai AI Trading Agents Hackathon, 28 Aug – 4 Sep 2026. Kickoff **Fri 28 Aug,
+8:00 AM PDT**. Submissions close **Thu 4 Sep, 8:00 AM PDT**.
+**Goal (Luke's words):** *"fun and maybe some professional benefit"* — but see the judging-criteria
+correction below: this is **not** the pure P&L lottery the plan originally assumed.
 
-**Next:** (1) dev paper-account keys into `.dev.vars` (any paper account — pre-building is allowed);
-(2) **spike Alpaca's MCP server**: quote → options chain → place order → read position back;
-(3) port **QQQ ORB** (already backtested, Sharpe 3.31) and pair it with an options expression, since
-options are mandatory; (4) on launch day only, a **brand-new dedicated** paper account at $100,000.
+**Dev account (NOT the submission account):** `alpaca-agent DEV` · **PA35CQR61R2Q** · $100,000 cash ·
+$400,000 buying power · `options_trading_level: 3` (top tier — multi-leg spreads allowed, no
+application). Keys in gitignored `.dev.vars`, verified against the live API.
+⚠️ **Alpaca caps the account at 3 paper accounts total.** 1 old (`PA3CAO6AR0OV`, $89.5k) + this DEV
+one = **2 used, exactly 1 slot left.** That last slot is RESERVED for the brand-new dedicated
+submission account created on **launch day**. Do not spend it.
 
-**Do NOT rebuild from scratch** — `~/brain/archived-projects/{stock-trader,trade-bot,trade-boy}` hold
-backtests, an execution engine and options research. See CLAUDE.md.
+**Verified working (2026-08-24):** account · options contracts · options snapshots **with greeks +
+IV on the FREE `indicative` feed** · stock bars. Delta-targeted strike selection proven live
+(QQQ 16-delta condor body: 696P / 716C, real bids).
+
+**Next:** (1) decide strategy shape — options are mandatory and P&L is only 1 of 5 judging criteria;
+(2) build the agent (autonomous, on Trading API, using **MCP server OR CLI** — either satisfies the
+rule); (3) budget a full day for the submission package (video + slides + cover image + public repo +
+**hosted demo URL**); (4) launch day: fresh dedicated account at $100k.
 
 ---
 
@@ -49,3 +60,35 @@ backtests, an execution engine and options research. See CLAUDE.md.
   absent a treaty claim; gross prizes reduced by withholding and wire fees; documentation due within
   **90 days** or the prize is forfeited.
 - ⏰ **Starts Friday 28 Aug 2026, 8:00 AM Pacific.**
+
+### 2026-08-24 (later) — dev account live, options path proven, two founding premises corrected
+- ⭐ **Luke's ruling: FRESH BUILD.** *"i dont want to use any old code — this is a new project."* The
+  six months of archived trading work is **reference only** — mine it for findings, never for source.
+  CLAUDE.md rewritten accordingly.
+- ✅ **Created `alpaca-agent DEV` paper account** via the dashboard: **PA35CQR61R2Q**, $100,000,
+  $400k buying power, sync-to-live left OFF. Generated paper keys → gitignored `.dev.vars` (chmod 600).
+- ✅ **Auth + data verified live**, not assumed: `/v2/account` returns ACTIVE/$100k, and
+  **`options_trading_level: 3`** — Alpaca's top tier, so **multi-leg spreads (iron condors) need no
+  application.**
+- ⭐⭐ **Greeks are FREE.** `v1beta1/options/snapshots/{sym}?feed=indicative` returns `greeks` +
+  `impliedVolatility`. **Gotcha that nearly cost the strategy:** the first 2-contract sample came back
+  with **no greeks**, which reads exactly like "greeks are a paid feature." They were deep-ITM
+  contracts, which omit them. Widening to `limit=1000` gave **282 contracts with greeks**.
+  ⚠️ **A field missing from a small sample is not an absent capability — widen the sample first.**
+- **`feed=opra` → HTTP 403 `"OPRA agreement is not signed"`** — an *agreement*, not a paywall, and
+  irrelevant while indicative carries greeks. (Note: the Social Engagement prize includes 1 month of
+  Algo Trader Plus, which is the OPRA tier.)
+- ✅ **Delta-targeted strike selection proven end-to-end** on the free feed — QQQ ~16-delta short
+  strikes 696P (Δ−0.164, bid 0.98) / 716C (Δ+0.154, bid 0.66), IV 0.22/0.16.
+- ⚠️⚠️ **RULES READ FROM SOURCE — two founding premises were wrong:**
+  1. **P&L is one of FIVE judging criteria** (P&L · Technology Implementation · Creativity &
+     Originality · Presentation & Execution · Social engagement). The "6-day P&L contest is a variance
+     lottery, EV ≈ $7, good risk management lowers your odds" framing **does not hold for the main
+     prizes.** Craft and presentation are scored directly.
+  2. **The submission is far bigger than "a one-page write-up":** title, short + long description,
+     tags, **cover image, video presentation, slide presentation, public GitHub repo, demo platform +
+     application URL**, account ID, and up to 5 social links. **Budget a day for this.**
+  3. Core requirement is **"MCP *or* CLI"** — MCP is not mandatory.
+  4. **No account-naming rule exists.** Judges identify the account by **ID**.
+  5. Teams 1–6. Enrolment now **2,080**.
+- ⚠️ **3-paper-account cap discovered.** 2 of 3 used; the last slot is reserved for launch day.

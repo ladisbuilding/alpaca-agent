@@ -28,24 +28,40 @@ contradicts itself: it requires documenting "risk gates" while scoring rewards d
 explainable decisions) and accept it will probably lose the P&L race to someone who YOLO'd. That is
 the correct trade given the stated goal.
 
-## ⭐⭐⭐ READ THIS FIRST — you are RESUMING, not starting
+## ⭐⭐⭐ READ THIS FIRST — this is a FRESH BUILD (Luke's ruling, 2026-08-24)
 
-Luke did six months of trading work in 2026 that is **already on this machine**. Do not rebuild it.
-Full write-up: `~/brain/wiki/discoveries/prior-trading-work.md`
+**Do NOT port, copy, or adapt any old code.** Luke was explicit: *"i dont want to use any old code —
+this is a new project… we are starting fresh."* Every line here is written new.
+
+**The old work is REFERENCE ONLY — read it for findings, never for source.** Six months of trading
+work from 2026 sits in `~/brain/archived-projects/{stock-trader,trade-bot,trade-boy}`; write-up at
+`~/brain/wiki/discoveries/prior-trading-work.md`. Mine it for *what was learned* (which strategies
+had edge, which were dead ends, how paper P&L lied) — that saves real time. Do not mine it for files.
 
 **A validated strategy already exists, backtested on Alpaca's own historical API:**
 - **QQQ Opening Range Breakout**, optimised params (R30 RR1.0 V1.0 T12, EMA filter OFF):
-  **Sharpe 3.31 · +$4,523 over 6 months on $25k · PF 1.58 · 50.7% win · max DD −4.9%** · stable in
-  walk-forward. Source: `~/brain/archived-projects/stock-trader/research/backtest-results.md`
+  **Sharpe 3.31 · +$4,523 over 6 months on $25k · PF 1.58 · 50.7% win · max DD −4.9%** — but read the
+  ⚠️ below before trusting that number. Source: `~/brain/archived-projects/stock-trader/research/backtest-results.md`
 - **TSLA ORB** — secondary, profitable, fewer trades, less confidence.
 - **VWAP mean reversion → no edge.** **SPY ORB → no edge** (confirmed in both test periods). Don't retest.
 - Its written next step was literally *"Paper trade QQQ ORB and TSLA ORB on Alpaca to validate
   real-time execution"* — **never done. That is this hackathon.**
+- ⚠️ **The Sharpe 3.31 is best-of-288, not an out-of-sample result.** Verified 2026-08-24 against
+  `research/backtest-results.md`: the **walk-forward passed on the BASELINE params** (Sharpe 1.78
+  in-sample → 1.93 out-of-sample). The 3.31 came from a **288-combination parameter sweep run
+  afterwards that was never itself walk-forward validated** — that is selection bias. **Expect
+  Sharpe ≈1.9, not 3.3.** Same failure family as the $2,015→$89 audit below: trust the
+  out-of-sample number, never the best-of-N number.
+- ⚠️ **The old options research is on the wrong broker.** The prior iron-condor work targeted
+  **tastytrade**, and the old Alpaca client had **no options support whatsoever**. Options are
+  **mandatory** here ⇒ **Alpaca options (chain, delta-based strike selection, multi-leg orders) is
+  genuinely new work with no prior art to lean on.**
 
 ⭐ **The blocker that stopped it is gone here.** The backtest flagged **PDT** (5.6 trades/week vs the
 3/week limit under $25k). The competition account is **$100,000**, so PDT does not apply.
 
-**Options research already exists** (and options are MANDATORY here):
+**Options research exists as READING** (and options are MANDATORY here) — note it targets tastytrade,
+so the *findings* transfer but none of the code does:
 `~/brain/archived-projects/stock-trader/research/spx-iron-condor-butterfly-research.md` —
 SPX **iron condors** (4-leg defined-risk, profits in a range, **~60–68% historical win**) vs
 **iron butterflies** (ATM shorts, larger credit, much narrower profit zone, **~40–50%**).
@@ -54,9 +70,10 @@ SPX **iron condors** (4-leg defined-risk, profits in a range, **~60–68% histor
 - Triangular crypto arb + Alpaca (explicitly logged as a dead end).
 - Crypto arb is **fee-negative**: $0.43 gross vs $1.74 fees on 3 trades.
 
-**Other code to mine rather than rewrite:** `~/brain/archived-projects/trade-boy` (AI trader +
-sentiment: `src/server/trading/ai-trader.ts`, `SENTIMENT.md`, news ingestion) and
-`~/brain/archived-projects/trade-bot` (live execution engine, WebSocket price feeds, position merging).
+**Other prior work worth READING (not copying — see the fresh-build ruling above):**
+`~/brain/archived-projects/trade-boy` (AI trader + sentiment: `SENTIMENT.md`, news ingestion) and
+`~/brain/archived-projects/trade-bot` (live execution engine, WebSocket feeds, position merging, and
+`tasks/lessons.md` — the source of the paper-P&L warning below).
 
 ## ⚠️⚠️ PAPER P&L LIES — Luke has already been burned by exactly this
 From `~/brain/archived-projects/trade-bot/tasks/lessons.md`:
