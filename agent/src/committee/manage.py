@@ -173,3 +173,58 @@ def review(
         if decision:
             out.append(decision)
     return out
+
+
+def held_positions(
+    broker_positions: Sequence[dict],
+    executed_decisions: Sequence[dict],
+) -> list[HeldPosition]:
+    """Reconstruct what we hold by matching broker legs to the decisions that opened them.
+
+    The broker reports one row per option leg with no memory of the structure it belongs to.
+    The decision log is what knows a set of four legs was one iron condor entered for a $72
+    credit — so exits can only be evaluated by joining the two. A four-leg condor is ONE
+    position, not four, and counting legs is the same error family that once turned 15
+    decisions into 72 "trades".
+
+    Legs the decision log cannot explain are deliberately skipped rather than guessed at;
+    the Auditor reports them separately as orphans.
+    """
+    by_symbol: dict[str, dict] = {p.get("symbol", ""): p for p in broker_positions}
+    out: list[HeldPosition] = []
+
+    for d in executed_decisions:
+        s = d.get("structure") or {}
+        legs = s.get("legs") or []
+        if not legs:
+            continue
+        live = [by_symbol[l["symbol"]] for l in legs if l.get("symbol") in by_symbol]
+        if not live:
+            continue  # already closed or expired — nothing to manage
+
+        # Net market value across the legs. Negative on a credit structure (we are net
+        # short), so the cost to close is its magnitude.
+        net_value = sum(float(p.get("market_value", 0) or 0) for p in live)
+        credit = float(s.get("net_credit", 0) or 0)
+
+        try:
+            expiry = date.fromisoformat(s["expiry"])
+        except (KeyError, ValueError):
+            continue
+
+        out.append(
+            HeldPosition(
+                fingerprint=s.get("fingerprint", ""),
+                underlying=s.get("underlying", "?"),
+                strategy=d.get("strategy", "unknown"),
+                expiry=expiry,
+                entry_credit=credit,
+                max_profit=float(s.get("max_profit", 0) or 0),
+                max_loss=float(s.get("max_loss", 0) or 0),
+                current_value=abs(net_value),
+                short_strikes=tuple(
+                    float(l["strike"]) for l in legs if l.get("side") == "sell" and "strike" in l
+                ),
+            )
+        )
+    return out

@@ -141,3 +141,75 @@ def test_unrealized_is_signed_correctly_for_both_structure_types():
     debit = HeldPosition("f", "Q", "call_debit_spread", date(2026, 9, 4),
                          entry_credit=-100.0, max_profit=100.0, max_loss=100.0, current_value=130.0)
     assert debit.unrealized == pytest.approx(30.0)
+
+
+# ── joining broker legs back to the decisions that opened them ─────────────────────
+
+from committee.manage import held_positions  # noqa: E402
+
+
+def broker_leg(symbol: str, market_value: float) -> dict:
+    return {"symbol": symbol, "market_value": str(market_value)}
+
+
+def executed_condor() -> dict:
+    return {
+        "executed": True,
+        "strategy": "iron_condor",
+        "structure": {
+            "underlying": "QQQ",
+            "fingerprint": "fp1",
+            "expiry": "2026-09-04",
+            "net_credit": 100.0,
+            "max_profit": 100.0,
+            "max_loss": 400.0,
+            "legs": [
+                {"symbol": "A", "side": "sell", "strike": 690.0},
+                {"symbol": "B", "side": "buy", "strike": 685.0},
+                {"symbol": "C", "side": "sell", "strike": 720.0},
+                {"symbol": "D", "side": "buy", "strike": 725.0},
+            ],
+        },
+    }
+
+
+def test_four_broker_legs_become_one_managed_position():
+    """The broker has no memory that four legs were one condor. Counting legs is the same
+    error family that turned 15 decisions into 72 trades."""
+    legs = [broker_leg(s, -12.5) for s in ("A", "B", "C", "D")]
+    held = held_positions(legs, [executed_condor()])
+    assert len(held) == 1
+    assert held[0].strategy == "iron_condor"
+    assert held[0].short_strikes == (690.0, 720.0)
+
+
+def test_current_value_is_the_cost_to_close():
+    """Net market value is negative on a credit structure; the cost to close is its size."""
+    legs = [broker_leg(s, v) for s, v in (("A", -40.0), ("B", 5.0), ("C", -30.0), ("D", 5.0))]
+    held = held_positions(legs, [executed_condor()])
+    assert held[0].current_value == pytest.approx(60.0)
+    assert held[0].unrealized == pytest.approx(40.0)  # took $100, costs $60 to close
+
+
+def test_a_closed_position_is_not_managed():
+    """No broker legs remain, so it expired or was already closed — nothing to do."""
+    assert held_positions([], [executed_condor()]) == []
+
+
+def test_a_partially_closed_structure_is_still_managed():
+    """Two of four legs remain — still a live position and still needs an exit decision."""
+    held = held_positions([broker_leg("A", -40.0), broker_leg("B", 5.0)], [executed_condor()])
+    assert len(held) == 1
+
+
+def test_legs_the_decision_log_cannot_explain_are_skipped_not_guessed():
+    """An orphan leg is the Auditor's job to report, not this function's to invent a
+    position from."""
+    held = held_positions([broker_leg("UNKNOWN", -10.0)], [executed_condor()])
+    assert held == []
+
+
+def test_a_malformed_expiry_is_skipped_rather_than_crashing_the_cycle():
+    bad = executed_condor()
+    bad["structure"]["expiry"] = "not-a-date"
+    assert held_positions([broker_leg("A", -10.0)], [bad]) == []

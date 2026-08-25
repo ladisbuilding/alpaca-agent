@@ -33,6 +33,7 @@ from anthropic import AsyncAnthropic
 from .chain import LiquidityFilter, expiries_within
 from .gates import GateResult, Proposal, Right, RiskConfig, evaluate, summarize
 from .llm import Turn, run_turn
+from .manage import ExitDecision, ManageConfig, held_positions, review
 from .market import MarketSnapshot
 from .mcp_client import McpCredentials, scoped_session
 from .roles import (
@@ -105,6 +106,8 @@ class CycleRecord:
     deliberations: list[dict[str, Any]] = field(default_factory=list)
     turns: list[dict[str, Any]] = field(default_factory=list)
     trades_placed: int = 0
+    positions_closed: int = 0
+    exits: list[dict[str, Any]] = field(default_factory=list)
     cost_usd: float = 0.0
     notes: list[str] = field(default_factory=list)
 
@@ -382,6 +385,9 @@ async def run_cycle(
     max_trades: int = 2,
     rehearse: bool = False,
     max_cycle_usd: float = 6.0,
+    open_decisions: list[dict[str, Any]] | None = None,
+    broker_positions: list[dict[str, Any]] | None = None,
+    manage_config: ManageConfig | None = None,
 ) -> CycleRecord:
     """`max_cycle_usd` stops a single sitting that turns pathological. An observed debating
     cycle costs ~$2; the structural worst case is ~$11. This runs unattended, so it must be
@@ -420,6 +426,57 @@ async def run_cycle(
             "Quotes are stale; conclusions here mean nothing. Plumbing only."
         )
     client = AsyncAnthropic(api_key=anthropic_key)
+
+    # ── 0. Manage what we already hold, BEFORE looking for anything new ───────────
+    # Freeing risk and buying power matters more than adding to the book, and an exit is
+    # deterministic — it costs nothing and should never wait behind a debate.
+    held = held_positions(broker_positions or [], open_decisions or [])
+    exits: list[ExitDecision] = review(
+        held, snapshot.today, manage_config,
+        spots={k: v for k, v in snapshot.spot.items()},
+        kill_switch=kill_switch,
+    )
+    for decision in exits:
+        record.exits.append(
+            {
+                "underlying": decision.position.underlying,
+                "strategy": decision.position.strategy,
+                "fingerprint": decision.position.fingerprint,
+                "reason": decision.reason.value,
+                "detail": decision.detail,
+                "unrealized": round(decision.position.unrealized, 2),
+                "closed": False,
+            }
+        )
+    if held:
+        record.notes.append(
+            f"Managing {len(held)} open position(s); {len(exits)} flagged for exit."
+        )
+
+    if exits and not dry_run:
+        async with scoped_session(EXECUTOR.toolsets, creds) as (session, schemas):
+            for i, decision in enumerate(exits):
+                p = decision.position
+                turn = await run_turn(
+                    client, EXECUTOR, session, schemas,
+                    "CLOSE this position. Place the closing multi-leg order via "
+                    "place_option_order — buy back what we sold and sell what we bought.\n\n"
+                    f"Underlying {p.underlying}, {p.strategy}, expiry {p.expiry}.\n"
+                    f"Reason: {decision.reason.value} — {decision.detail}\n"
+                    "Use get_all_positions to read the exact legs and quantities first.",
+                )
+                _record_turn(record, turn)
+                closed = any(
+                    c.tool == "place_option_order" and not c.result.startswith(("ERROR", "DENIED"))
+                    for c in turn.tool_calls
+                )
+                record.exits[i]["closed"] = closed
+                record.exits[i]["note"] = turn.text[:400]
+                if closed:
+                    record.positions_closed += 1
+    elif exits:
+        for e in record.exits:
+            e["note"] = "DRY RUN — flagged for exit but not sent to the broker."
 
     # ── 1. Scouts nominate (concurrently — they are independent by design) ─────────
     premium, direction = await asyncio.gather(

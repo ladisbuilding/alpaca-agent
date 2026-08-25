@@ -101,6 +101,37 @@ def post_record(record_json: str) -> tuple[int, str]:
         return 0, f"{type(exc).__name__}: {exc}"
 
 
+def open_decisions(api: str | None) -> list[dict]:
+    """Executed decisions from prior cycles, so exits can be matched to what opened them.
+
+    Read back from the api rather than held in memory: containers are ephemeral, and one that
+    forgets what it opened cannot manage it.
+    """
+    if not api:
+        return []
+    out: list[dict] = []
+    try:
+        req = urllib.request.Request(
+            f"{api.rstrip('/')}/cycles?limit=60", headers={"user-agent": UA}
+        )
+        with urllib.request.urlopen(req, timeout=20) as r:
+            cycles = json.load(r).get("cycles", [])
+    except Exception as exc:  # noqa: BLE001
+        print(f"  !! could not load prior cycles: {type(exc).__name__}: {exc}")
+        return []
+    for c in cycles:
+        try:
+            req = urllib.request.Request(
+                f"{api.rstrip('/')}/cycles/{c['id']}", headers={"user-agent": UA}
+            )
+            with urllib.request.urlopen(req, timeout=20) as r:
+                rec = json.load(r)
+        except Exception:  # noqa: BLE001
+            continue
+        out += [d for d in rec.get("deliberations", []) if d.get("executed")]
+    return out
+
+
 def recent_fingerprints(api: str | None) -> list[tuple[str, date]]:
     """What we have already traded and is still live.
 
@@ -162,6 +193,12 @@ async def one_cycle(force: bool = False, live: bool | None = None) -> dict:
             "equity": snapshot.portfolio.equity,
         }
 
+    try:
+        broker_positions = rest.positions()
+    except Exception as exc:  # noqa: BLE001
+        broker_positions = []
+        print(f"  !! positions fetch failed: {type(exc).__name__}: {exc}")
+
     record = await run_cycle(
         snapshot,
         McpCredentials(env["ALPACA_API_KEY_ID"], env["ALPACA_API_SECRET_KEY"], paper=True),
@@ -172,6 +209,8 @@ async def one_cycle(force: bool = False, live: bool | None = None) -> dict:
         recent_fingerprints=recent_fingerprints(api),
         max_trades=int(os.environ.get("MAX_TRADES", "2")),
         max_cycle_usd=MAX_CYCLE_USD,
+        open_decisions=open_decisions(api),
+        broker_positions=broker_positions,
     )
 
     status, body = post_record(record.to_json())
@@ -182,6 +221,8 @@ async def one_cycle(force: bool = False, live: bool | None = None) -> dict:
         "nominations": len(record.nominations),
         "deliberations": len(record.deliberations),
         "trades_placed": record.trades_placed,
+        "positions_closed": record.positions_closed,
+        "exits": record.exits,
         "cost_usd": round(record.cost_usd, 4),
         "spent_today_before": round(spent, 2),
         "daily_cap": DAILY_USD_CAP,
