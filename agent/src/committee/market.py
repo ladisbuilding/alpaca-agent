@@ -20,12 +20,40 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
 from .chain import Contract, contracts_from_snapshots
 from .gates import OpenPosition, PortfolioState
+
+# The strikes a premium seller would actually trade. Outside this band the quotes are
+# illiquid and their implied vol is noise — see `realized_vol` and `describe` below.
+TRADABLE_DELTA_LO = 0.08
+TRADABLE_DELTA_HI = 0.45
+
+
+def realized_vol(closes: list[float], sessions: int = 30) -> float | None:
+    """Annualised close-to-close volatility over `sessions`.
+
+    Computed deterministically and handed to the scouts rather than left to them, because a
+    scout choosing its own lookback will choose a flattering one. A live nomination cited
+    0.47%/day from a 10-session window when the 30-session figure was 0.78%/day — the Bear
+    caught it, but the scout should never have been able to make that claim.
+    """
+    if len(closes) < 3:
+        return None
+    window = closes[-(sessions + 1) :]
+    rets = [
+        (window[i] - window[i - 1]) / window[i - 1]
+        for i in range(1, len(window))
+        if window[i - 1]
+    ]
+    if len(rets) < 2:
+        return None
+    mean = sum(rets) / len(rets)
+    var = sum((r - mean) ** 2 for r in rets) / (len(rets) - 1)
+    return (var ** 0.5) * (252 ** 0.5)
 
 
 def load_dev_vars(path: Path) -> dict[str, str]:
@@ -79,6 +107,19 @@ class AlpacaRest:
     def latest_stock_quote(self, symbols: str) -> dict[str, Any]:
         return self._get(f"{self._data}/v2/stocks/quotes/latest?symbols={symbols}&feed=iex")
 
+    def daily_bars(self, symbol: str, sessions: int = 40) -> list[dict[str, Any]]:
+        """Daily bars going back far enough for a volatility window.
+
+        `limit` alone returns only the most recent bar — Alpaca needs an explicit `start`.
+        Calendar days are ~1.5x sessions to cover weekends and holidays.
+        """
+        start = (datetime.now(timezone.utc) - timedelta(days=int(sessions * 1.6))).date()
+        payload = self._get(
+            f"{self._data}/v2/stocks/{symbol}/bars"
+            f"?timeframe=1Day&start={start.isoformat()}&limit=1000&feed=iex"
+        )
+        return payload.get("bars", []) or []
+
 
 @dataclass(frozen=True)
 class MarketSnapshot:
@@ -88,6 +129,7 @@ class MarketSnapshot:
     portfolio: PortfolioState
     chains: dict[str, tuple[Contract, ...]] = field(default_factory=dict)
     spot: dict[str, float] = field(default_factory=dict)
+    realized: dict[str, float] = field(default_factory=dict)  # annualised, 30 sessions
 
     @property
     def today(self) -> date:
@@ -99,27 +141,51 @@ class MarketSnapshot:
     def describe(self, underlying: str) -> str:
         """Compact, model-readable summary of one underlying.
 
-        Deliberately terse. The first Bear turn consumed ~132k input tokens because raw
-        chain payloads reached the model; the deterministic layer has already parsed the
-        chain, so the model needs the shape of it, not the dump.
+        ⚠️ IV is reported ONLY over strikes a premium seller would actually trade
+        (|delta| 0.08–0.45, quoted). Reporting a median across the whole chain was a live
+        bug: deep-ITM strikes trading 1–13 contracts carry meaningless IV, which inflated
+        the median to 22–24% when the strikes we'd sell priced at 13–16%. Scouts nominated
+        on a "3x IV/RV" premise that did not exist, and the Bear killed every one of them.
+
+        Realized vol is supplied here too, over a FIXED 30-session window, so the scout
+        compares against a number it did not get to choose.
+
+        Deliberately terse: the first Bear turn burned ~132k input tokens on raw chain
+        payloads. The model needs the shape of the chain, not the dump.
         """
         chain = self.chain(underlying)
+        u = underlying.upper()
         with_greeks = [c for c in chain if c.delta is not None]
         expiries = sorted({c.expiry for c in with_greeks})[:4]
-        spot = self.spot.get(underlying.upper())
+        spot = self.spot.get(u)
+        rv = self.realized.get(u)
+
         lines = [
             f"{underlying}: spot {spot if spot else 'n/a'}, "
             f"{len(chain)} contracts ({len(with_greeks)} with greeks)",
+            f"  realized vol (30 sessions, annualised): "
+            + (f"{rv:.1%}" if rv else "unavailable"),
             f"  near expiries: {', '.join(e.isoformat() for e in expiries) or 'none'}",
         ]
         for e in expiries[:2]:
-            same = [c for c in with_greeks if c.expiry == e]
-            ivs = [c.implied_volatility for c in same if c.implied_volatility]
-            if ivs:
-                lines.append(
-                    f"  {e}: {len(same)} strikes, IV {min(ivs):.1%}-{max(ivs):.1%} "
-                    f"(median {sorted(ivs)[len(ivs) // 2]:.1%})"
-                )
+            tradable = [
+                c
+                for c in with_greeks
+                if c.expiry == e
+                and c.implied_volatility
+                and TRADABLE_DELTA_LO <= abs(c.delta) <= TRADABLE_DELTA_HI
+                and c.bid > 0
+            ]
+            if not tradable:
+                lines.append(f"  {e}: no tradable strikes in the 8-45 delta band")
+                continue
+            ivs = sorted(c.implied_volatility for c in tradable)  # type: ignore[misc]
+            median = ivs[len(ivs) // 2]
+            ratio = f", IV/RV {median / rv:.2f}x" if rv else ""
+            lines.append(
+                f"  {e}: {len(tradable)} tradable strikes (8-45 delta), "
+                f"IV {ivs[0]:.1%}-{ivs[-1]:.1%} median {median:.1%}{ratio}"
+            )
         return "\n".join(lines)
 
 
@@ -184,6 +250,7 @@ def take_snapshot(rest: AlpacaRest, underlyings: list[str]) -> MarketSnapshot:
 
     chains: dict[str, tuple[Contract, ...]] = {}
     spot: dict[str, float] = {}
+    realized: dict[str, float] = {}
     for u in underlyings:
         u = u.upper()
         try:
@@ -198,6 +265,13 @@ def take_snapshot(rest: AlpacaRest, underlyings: list[str]) -> MarketSnapshot:
                 spot[u] = round((bid + ask) / 2, 2)
         except Exception:  # noqa: BLE001 — spot is nice to have, not required
             pass
+        try:
+            closes = [float(b["c"]) for b in rest.daily_bars(u, limit=40) if b.get("c")]
+            rv = realized_vol(closes)
+            if rv:
+                realized[u] = rv
+        except Exception:  # noqa: BLE001
+            pass
 
     return MarketSnapshot(
         taken_at=datetime.now(timezone.utc),
@@ -206,4 +280,5 @@ def take_snapshot(rest: AlpacaRest, underlyings: list[str]) -> MarketSnapshot:
         portfolio=_positions_to_state(account, raw_positions),
         chains=chains,
         spot=spot,
+        realized=realized,
     )
