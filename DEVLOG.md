@@ -2,28 +2,43 @@
 
 ## Current State
 
-**Phase:** dev environment LIVE and verified. ⭐ **FRESH BUILD — do not port old code** (Luke's ruling
-2026-08-24); `archived-projects/` is reading material only. See CLAUDE.md.
-**Event:** Alpaca × lablab.ai AI Trading Agents Hackathon, 28 Aug – 4 Sep 2026. Kickoff **Fri 28 Aug,
-8:00 AM PDT**. Submissions close **Thu 4 Sep, 8:00 AM PDT**.
-**Goal (Luke's words):** *"fun and maybe some professional benefit"* — but see the judging-criteria
-correction below: this is **not** the pure P&L lottery the plan originally assumed.
+**Phase:** BUILT AND SELF-DRIVING. All 8 committee roles have run. **83 tests.** Everything deployed
+and verified end to end. ⭐ **FRESH BUILD** — `archived-projects/` is reading material only.
 
-**Dev account (NOT the submission account):** `alpaca-agent DEV` · **PA35CQR61R2Q** · $100,000 cash ·
-$400,000 buying power · `options_trading_level: 3` (top tier — multi-leg spreads allowed, no
-application). Keys in gitignored `.dev.vars`, verified against the live API.
-⚠️ **Alpaca caps the account at 3 paper accounts total.** 1 old (`PA3CAO6AR0OV`, $89.5k) + this DEV
-one = **2 used, exactly 1 slot left.** That last slot is RESERVED for the brand-new dedicated
-submission account created on **launch day**. Do not spend it.
+**Live:**
+- `https://alpaca-agent.domfly.workers.dev` — dashboard, **the hackathon's required Application URL**
+- `https://alpaca-agent-api.domfly.workers.dev` — Hono + D1, ingest + watchdog cron
+- `https://alpaca-agent-runner.domfly.workers.dev` — Cloudflare Container + cron, **wakes the
+  committee every 30 min during US market hours. Does not depend on Luke's machine.**
+- `github.com/ladisbuilding/alpaca-agent` — **PRIVATE**, flip public before submission
 
-**Verified working (2026-08-24):** account · options contracts · options snapshots **with greeks +
-IV on the FREE `indicative` feed** · stock bars. Delta-targeted strike selection proven live
-(QQQ 16-delta condor body: 696P / 716C, real bids).
+**Accounts:** DEV `PA35CQR61R2Q` ($100k, options L3). ⚠️ **1 of 3 paper slots left — reserved for the
+brand-new dedicated submission account on launch day.**
 
-**Next:** (1) decide strategy shape — options are mandatory and P&L is only 1 of 5 judging criteria;
-(2) build the agent (autonomous, on Trading API, using **MCP server OR CLI** — either satisfies the
-rule); (3) budget a full day for the submission package (video + slides + cover image + public repo +
-**hosted demo URL**); (4) launch day: fresh dedicated account at $100k.
+**⚠️ Currently `DRY_RUN=true`** — it deliberates and records but places nothing. Correct for the
+observation days. Flip on launch day, deliberately.
+
+**Cost:** ~$0.24 for a cycle blocked pre-gate, **~$2.04 for one that reaches debate**. ~$25/day while
+deliberating every 30 min ⇒ ~$75 of calibration data across Tue–Thu.
+
+### Next — Tuesday at the open (09:30 ET), in order
+1. **Read the overnight cycles**, then **calibrate `WIDE_SPREAD` (15%) and `THIN_CREDIT` (10%)
+   against a LIVE book.** They block nearly everything on after-hours quotes. **Do not tune off
+   closed-market data.** A gate blocking 100% is as broken as one blocking none.
+2. ⭐⭐ **Settle whether the income sleeve's premise holds.** The committee itself showed that on
+   Monday's data **IV was at or BELOW trailing realized** — i.e. no variance premium to sell. If
+   that holds live, `short_delta`/DTE need rethinking. This is the biggest open question.
+3. **Executor is the last untested path** — it exercises itself the first time a structure survives
+   a real debate.
+
+### Then
+Wed: README + flip repo public. Thu: submission package (video ≤5min MP4, PDF deck, 16:9 cover,
+public repo, demo URL). Fri 08:00 PT: fresh $100k account, swap keys, `DRY_RUN=false`.
+
+### Waiting on Luke
+- **Account config:** Auditor recommends `no_shorting = true` so the BROKER enforces
+  defined-risk-only rather than trusting our code. Account setting ⇒ Luke's call.
+- Dedicated Anthropic API key (currently reusing chaz's) so hackathon spend is tracked separately.
 
 ---
 
