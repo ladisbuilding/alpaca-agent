@@ -22,6 +22,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from .cycle import run_cycle
 from .market import AlpacaRest, take_snapshot
 from .mcp_client import McpCredentials
+from .switches import Switches
 
 PORT = int(os.environ.get("PORT", "8080"))
 
@@ -211,6 +212,10 @@ async def one_cycle(force: bool = False, live: bool | None = None) -> dict:
         max_cycle_usd=MAX_CYCLE_USD,
         open_decisions=open_decisions(api),
         broker_positions=broker_positions,
+        switches=Switches.parse(
+            os.environ.get("STRATEGY_MODES"),
+            global_kill=os.environ.get("KILL_SWITCH", "false").lower() == "true",
+        ),
     )
 
     status, body = post_record(record.to_json())

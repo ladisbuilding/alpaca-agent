@@ -28,6 +28,7 @@ class ExitReason(str, Enum):
     TIME_STOP = "time_stop"
     ASSIGNMENT_RISK = "assignment_risk"
     KILL_SWITCH = "kill_switch"
+    STRATEGY_KILLED = "strategy_killed"
 
 
 @dataclass(frozen=True)
@@ -98,6 +99,7 @@ def evaluate_exit(
     *,
     spot: float | None = None,
     kill_switch: bool = False,
+    flatten: bool = False,
 ) -> ExitDecision | None:
     """Should this position be closed? Rules only, checked in order of urgency."""
     config = config or ManageConfig()
@@ -105,6 +107,13 @@ def evaluate_exit(
 
     if kill_switch:
         return ExitDecision(position, ExitReason.KILL_SWITCH, "Kill switch engaged — flatten.")
+
+    if flatten:
+        return ExitDecision(
+            position,
+            ExitReason.STRATEGY_KILLED,
+            f"The {position.strategy} family is KILLED — flattening rather than carrying it.",
+        )
 
     # ── assignment risk — the one that stops "defined risk" being true ────────────
     if dte <= config.close_at_dte and position.short_strikes and spot:
@@ -161,6 +170,7 @@ def review(
     *,
     spots: dict[str, float] | None = None,
     kill_switch: bool = False,
+    switches=None,
 ) -> list[ExitDecision]:
     """Every position, checked every cycle. Exits run before new entries are considered —
     freeing risk and buying power matters more than adding to the book."""
@@ -168,7 +178,10 @@ def review(
     out = []
     for p in positions:
         decision = evaluate_exit(
-            p, today, config, spot=spots.get(p.underlying.upper()), kill_switch=kill_switch
+            p, today, config,
+            spot=spots.get(p.underlying.upper()),
+            kill_switch=kill_switch,
+            flatten=bool(switches and switches.must_flatten(p.strategy)),
         )
         if decision:
             out.append(decision)

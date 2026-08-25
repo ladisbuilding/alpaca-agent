@@ -234,6 +234,7 @@ def evaluate(
     kill_switch: bool = False,
     market_open: bool = True,
     recent_fingerprints: Iterable[tuple[str, date]] = (),
+    switch_reason: str | None = None,
 ) -> GateResult:
     """Run every gate. Gates do not short-circuit — we collect *all* blocking reasons so
     the decision log shows every rule a proposal violated, not just the first."""
@@ -243,6 +244,11 @@ def evaluate(
     # ── KILL SWITCH ────────────────────────────────────────────────────────────────
     if kill_switch:
         result.block("KILL_SWITCH", "Kill switch engaged — no new positions.")
+
+    # A family that is exit-only or killed still MANAGES what it holds; it just may not open.
+    # Standing a strategy down must never mean abandoning its open positions.
+    if switch_reason:
+        result.block("STRATEGY_STOOD_DOWN", switch_reason)
 
     # ── MARKET HOURS ───────────────────────────────────────────────────────────────
     if not market_open:

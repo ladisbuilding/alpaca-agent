@@ -122,3 +122,114 @@ a { color: inherit; }
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   /deck — the submission deck, as slides.
+
+   Each slide is a 16:9 sheet with a page break after it, so printing to PDF from
+   the browser produces exactly the required deliverable. Built as a page rather
+   than in a slide tool because the figures are read live from the running agent:
+   a deck exported on Wednesday is stale by Friday, and the numbers are the whole
+   argument.
+   ───────────────────────────────────────────────────────────────────────────── */
+
+.deck {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 2rem 1.25rem 4rem;
+}
+
+.deck-slide {
+  aspect-ratio: 16 / 9;
+  background: var(--ink-raised);
+  border: 1px solid var(--ink-line);
+  margin-bottom: 1.5rem;
+  padding: clamp(1.5rem, 4vw, 3.5rem);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  overflow: hidden;
+}
+
+.deck-inner { min-height: 0; }
+
+.deck-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  border-top: 1px solid var(--ink-line);
+  padding-top: .75rem;
+  margin-top: 1rem;
+}
+
+.deck-list {
+  margin: 1rem 0 0;
+  padding-left: 1.2rem;
+  max-width: 58ch;
+}
+.deck-list li { margin-bottom: .9rem; }
+
+.deck-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 1rem;
+  max-width: 62ch;
+}
+.deck-table td {
+  padding: .55rem .75rem .55rem 0;
+  border-bottom: 1px solid var(--ink-line);
+  vertical-align: baseline;
+}
+.deck-table td:nth-child(2) { color: var(--brass); white-space: nowrap; }
+.deck-table td:nth-child(3) { color: var(--muted); font-size: .92em; }
+
+.deck-flow {
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: clamp(9px, 1.15vw, 13px);
+  line-height: 1.55;
+  color: var(--brass);
+  margin: 1rem 0 0;
+  overflow-x: auto;
+}
+
+.deck-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 1.5rem;
+  margin-top: 1.5rem;
+}
+
+.deck-hint {
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: 11px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--muted);
+  text-align: center;
+  padding: 1.5rem 0;
+}
+
+/* Print → the PDF the submission asks for. 16:9 landscape, one slide per page. */
+@page {
+  size: 297mm 167mm;  /* 16:9 at A4 width */
+  margin: 0;
+}
+
+@media print {
+  html, body { background: var(--ink) !important; }
+  .deck { max-width: none; margin: 0; padding: 0; }
+  .deck-hint { display: none; }
+  .deck-slide {
+    aspect-ratio: auto;
+    width: 297mm;
+    height: 167mm;
+    margin: 0;
+    border: 0;
+    page-break-after: always;
+    break-after: page;
+    /* Backgrounds are the design; without this the deck prints as white paper. */
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .deck-slide:last-of-type { page-break-after: auto; break-after: auto; }
+}

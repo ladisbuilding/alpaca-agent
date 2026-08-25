@@ -47,6 +47,7 @@ from .roles import (
     Role,
 )
 from .regime import Regime
+from .switches import Switches
 from .strategy import (
     CalendarConfig,
     DirectionalConfig,
@@ -393,6 +394,7 @@ async def run_cycle(
     open_decisions: list[dict[str, Any]] | None = None,
     broker_positions: list[dict[str, Any]] | None = None,
     manage_config: ManageConfig | None = None,
+    switches: Switches | None = None,
 ) -> CycleRecord:
     """`max_cycle_usd` stops a single sitting that turns pathological. An observed debating
     cycle costs ~$2; the structural worst case is ~$11. This runs unattended, so it must be
@@ -407,6 +409,7 @@ async def run_cycle(
     income = income or IncomeConfig()
     directional = directional or DirectionalConfig()
     recent = recent_fingerprints or []
+    switches = switches or Switches()
     now = datetime.now().astimezone()
 
     if rehearse:
@@ -425,6 +428,8 @@ async def run_cycle(
         universe=universe,
     )
     gates_see_open = snapshot.is_open or rehearse
+    if not switches.all_active:
+        record.notes.append(f"Strategy switches: {switches.describe()}")
     if rehearse:
         record.notes.append(
             "REHEARSAL — gates told the market is open to exercise the debate path. "
@@ -440,6 +445,7 @@ async def run_cycle(
         held, snapshot.today, manage_config,
         spots={k: v for k, v in snapshot.spot.items()},
         kill_switch=kill_switch,
+        switches=switches,
     )
     for decision in exits:
         record.exits.append(
@@ -517,6 +523,7 @@ async def run_cycle(
             proposal, snapshot.portfolio, risk, now,
             kill_switch=kill_switch, market_open=gates_see_open,
             recent_fingerprints=recent,
+            switch_reason=switches.block_reason(proposal.strategy),
         )
         deliberation = Deliberation(
             nomination=nom,
@@ -613,6 +620,7 @@ async def run_cycle(
             proposal, snapshot.portfolio, risk, now if rehearse else datetime.now().astimezone(),
             kill_switch=kill_switch, market_open=gates_see_open,
             recent_fingerprints=recent,
+            switch_reason=switches.block_reason(proposal.strategy),
         )
         deliberation.final_gate = _gate_dict(final)
         if not final.approved:
