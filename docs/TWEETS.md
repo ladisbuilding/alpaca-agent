@@ -283,6 +283,17 @@ and tuning all still happen during the week — and all of it is postable.
 >
 > then forced it to fire, because an alert that's never fired isn't an alert
 
+**my dashboard was hiding the best part**
+> the agent refuses most trades before any debate happens. deterministic gates run first,
+> they're cheap
+>
+> which meant my dashboard showed... a list of refusals. every time
+>
+> the actual debate transcripts were sitting in the database, invisible, because the page
+> only ever rendered the LATEST sitting
+>
+> the most interesting thing it produces and you couldn't see it
+
 ## Tier 3 — filler. Fine if a day is quiet.
 
 - only 3 paper accounts per alpaca login. burned one on dev, one stays sealed for the submission

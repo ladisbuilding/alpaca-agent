@@ -10,21 +10,24 @@ function useRecord() {
   const [state, setState] = React.useState<{
     latest: CycleRecord | null
     summary: Summary | null
+    debate: CycleRecord | null
     error: string | null
     loading: boolean
-  }>({ latest: null, summary: null, error: null, loading: true })
+  }>({ latest: null, summary: null, debate: null, error: null, loading: true })
 
   React.useEffect(() => {
     let cancelled = false
     async function load() {
-      const [latest, summary] = await Promise.all([
+      const [latest, summary, debate] = await Promise.all([
         fetchJson<CycleRecord>('/latest'),
         fetchJson<Summary>('/summary'),
+        fetchJson<CycleRecord>('/latest-debate'),
       ])
       if (cancelled) return
       setState({
         latest: latest.data,
         summary: summary.data,
+        debate: debate.data,
         // /latest 404s legitimately before the first sitting; that is an empty state,
         // not a fault. Only a summary failure means the record is actually unreachable.
         error: summary.error,
@@ -168,6 +171,45 @@ function Figure({ label, value }: { label: string; value: string }) {
   )
 }
 
+/**
+ * The agents write markdown — bold, headers, occasionally a table. Rendering the raw
+ * asterisks on a surface judges read looks like a defect, so this handles the small subset
+ * they actually use. Deliberately not a markdown library: React escapes the output, and a
+ * parser here would be more surface than the three constructs warrant.
+ */
+function RichText({ text }: { text: string }) {
+  const lines = text.split('\n')
+  return (
+    <>
+      {lines.map((line, i) => {
+        const heading = line.match(/^#{1,4}\s+(.*)$/)
+        const body = heading ? heading[1] : line
+        const parts = body.split(/(\*\*[^*]+\*\*)/g).filter(Boolean)
+        const rendered = parts.map((p, j) =>
+          p.startsWith('**') && p.endsWith('**') ? (
+            <strong key={j}>{p.slice(2, -2)}</strong>
+          ) : (
+            <React.Fragment key={j}>{p}</React.Fragment>
+          ),
+        )
+        if (heading) {
+          return (
+            <p key={i} style={{ margin: '1rem 0 .35rem', fontWeight: 600 }}>
+              {rendered}
+            </p>
+          )
+        }
+        if (!line.trim()) return <br key={i} />
+        return (
+          <p key={i} style={{ margin: '0 0 .5rem' }}>
+            {rendered}
+          </p>
+        )
+      })}
+    </>
+  )
+}
+
 function Remark({ speaker, text, verdict }: { speaker: string; text: string | null; verdict?: string | null }) {
   if (!text) return null
   return (
@@ -183,13 +225,22 @@ function Remark({ speaker, text, verdict }: { speaker: string; text: string | nu
           </span>
         )}
       </div>
-      <p style={{ margin: '.4rem 0 0', whiteSpace: 'pre-wrap' }}>{text}</p>
+      <div style={{ marginTop: '.4rem' }}>
+        <RichText text={text} />
+      </div>
     </div>
   )
 }
 
 function Home() {
-  const { latest, summary, error, loading } = useRecord()
+  const { latest, summary, debate, error, loading } = useRecord()
+
+  // The latest sitting is usually all-refused, because the gates are cheap and run first.
+  // Showing only that would hide the debates entirely on a quiet afternoon — so the most
+  // recent argued case gets its own section, plainly timestamped rather than passed off
+  // as current.
+  const debated = debate?.deliberations.filter((d) => d.debated) ?? []
+  const debateIsLatest = debate?.started_at === latest?.started_at
 
   return (
     <main style={{ maxWidth: 860, margin: '0 auto', padding: '4rem 1.25rem 6rem' }}>
@@ -282,6 +333,32 @@ function Home() {
           </p>
         ))}
       </section>
+
+      {/* The argument ─────────────────────────────────────────────────────── */}
+      {debated.length > 0 && !debateIsLatest && (
+        <section style={{ paddingTop: '3rem' }}>
+          <hr className="rule" />
+          <div className="eyebrow" style={{ paddingTop: '2rem' }}>
+            Most recent argued case · {when(debate!.started_at)}
+          </div>
+          <p style={{ maxWidth: '52ch', margin: '.75rem 0 1.5rem', color: 'var(--muted)' }}>
+            Most sittings are refused by the gates before anyone argues — that is the cheap
+            check running first, by design. This is the last one that reached the committee.
+          </p>
+          {debate!.notes.some((n) => n.startsWith('REHEARSAL')) && (
+            <p
+              className="machine"
+              style={{ fontSize: 12, color: 'var(--stamp)', margin: '0 0 1.5rem', maxWidth: '58ch' }}
+            >
+              REHEARSAL — the gates were told the market was open in order to exercise the debate
+              path. The quotes behind this are stale, so the conclusions mean nothing. Plumbing only.
+            </p>
+          )}
+          {debated.map((d, i) => (
+            <Proceeding key={i} d={d} />
+          ))}
+        </section>
+      )}
 
       {/* What the gates stopped ───────────────────────────────────────────── */}
       {summary && summary.top_blocking_gates.length > 0 && (

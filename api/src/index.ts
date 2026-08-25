@@ -177,6 +177,25 @@ app.get('/summary', async (c) => {
   })
 })
 
+/**
+ * The most recent sitting that actually held a debate.
+ *
+ * Most sittings are refused by the gates before any argument happens, which is correct and
+ * cheap — but it means /latest is usually a quiet cycle. The debate transcripts are the most
+ * interesting thing this agent produces, and without this they sit in the database invisible
+ * to anyone who opens the dashboard on a slow afternoon.
+ */
+app.get('/latest-debate', async (c) => {
+  const { results } = await c.env.DB.prepare(
+    `SELECT c.record FROM cycles c
+       JOIN decisions d ON d.cycle_id = c.id
+      WHERE d.bear_verdict IS NOT NULL
+      ORDER BY c.started_at DESC LIMIT 1`
+  ).all<{ record: string }>()
+  if (!results.length) return c.json({ error: 'no debates yet' }, 404)
+  return c.json(JSON.parse(results[0].record))
+})
+
 /** Refusals, newest first — the dashboard's most interesting feed. */
 app.get('/refusals', async (c) => {
   const { results } = await c.env.DB.prepare(

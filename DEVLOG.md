@@ -404,3 +404,21 @@ figure**, so `INSUFFICIENT_BUYING_POWER` would have authorised **4x the intended
 - ⭐ **It also declared its own blind spot honestly:** *"I have no tool for open positions or working
   orders… That inference is strong but it is an inference."* — the `account`-only scope working as
   designed, and the agent saying so rather than bluffing.
+
+### 2026-08-24 (cont.) — dashboard: the debate path was invisible
+Same class of gap as the debate path itself — an untested rendering path whose first real
+exercise would be tomorrow, live, with judges possibly watching. Pushed a real rehearsal record
+through the actual pipeline and looked at it. Three problems:
+1. ⭐⭐ **PRODUCT GAP, not just a test gap: the dashboard only ever showed the LATEST sitting.**
+   Most sittings are refused pre-gate (correct and cheap), so **a judge landing on a quiet
+   afternoon would see nothing but refusals while the debate transcripts — the most interesting
+   thing this agent produces — sat in the database invisible.**
+   ⇒ New `GET /latest-debate` (most recent cycle containing a bear verdict) + a
+   **"Most recent argued case"** section, plainly timestamped rather than passed off as current.
+2. **The agents write markdown**, so `**FOR — sized small…**` rendered as literal asterisks on a
+   judged surface. Added a minimal inline renderer (bold + headers). Deliberately not a markdown
+   library — React escapes the output and a parser is more surface than three constructs warrant.
+3. **A rehearsal record was indistinguishable from a live one.** Now labelled explicitly in the
+   UI: *"REHEARSAL — the gates were told the market was open… conclusions mean nothing."*
+   Same lesson as the `[TEST]` alert prefix: **if a drill looks like the real thing, it will
+   eventually be read as the real thing.**
