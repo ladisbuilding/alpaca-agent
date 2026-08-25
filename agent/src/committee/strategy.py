@@ -31,7 +31,11 @@ from .gates import CONTRACT_SIZE, Leg, Proposal, Right, Side
 class IncomeConfig:
     short_delta: float = 0.16  # magnitude; sign is applied per side
     wing_width: float = 5.0  # dollars
-    min_dte: int = 1
+    # ⚠️ min_dte was 1, which walked straight into the assignment trap the Bear identified:
+    # "~10% chance of closing 753-758 → assignment of $75,800 SPY on a $100k book, worthless
+    # wing. 'Defined risk' ends at 4pm." A short leg finishing ITM is assigned, and the long
+    # wing does not help overnight. Never enter 0-1 DTE.
+    min_dte: int = 2
     max_dte: int = 9
     qty: int = 1
     fill: FillAssumption = FillAssumption.CONSERVATIVE
@@ -41,8 +45,28 @@ class IncomeConfig:
 class DirectionalConfig:
     long_delta: float = 0.40
     short_delta: float = 0.25
-    min_dte: int = 3
-    max_dte: int = 14
+    # Expiration should run roughly 2-3x the expected holding period. Holding 2-3 days means
+    # 6-15 DTE; anything shorter is bought gamma you have to be right about immediately.
+    min_dte: int = 5
+    max_dte: int = 15
+    qty: int = 1
+    fill: FillAssumption = FillAssumption.CONSERVATIVE
+
+
+@dataclass(frozen=True)
+class CalendarConfig:
+    """Sell the near expiry, buy the far one at the same strike.
+
+    The canonical low-IV structure: it profits from the near leg decaying faster than the far
+    leg, and from volatility expanding off a low base. Max loss is the debit paid, so it is
+    defined risk by construction — and unlike a condor it does not need premium to be rich,
+    which is the whole reason it belongs in this book.
+    """
+
+    target_delta: float = 0.50  # at the money, where the decay differential is largest
+    near_min_dte: int = 2  # never the 0-1 DTE assignment trap
+    near_max_dte: int = 9
+    far_min_gap: int = 5  # the far leg must be meaningfully longer-dated
     qty: int = 1
     fill: FillAssumption = FillAssumption.CONSERVATIVE
 
@@ -219,4 +243,63 @@ def build_debit_vertical(
         max_profit=max_profit,
         net_credit=-debit,
         bid_ask_pct=_structure_spread_pct([long_leg, short_leg], long_leg.mid - short_leg.mid),
+    )
+
+
+def build_calendar(
+    contracts: Sequence[Contract],
+    near_expiry: date,
+    far_expiry: date,
+    right: Right,
+    config: CalendarConfig,
+    liquidity: LiquidityFilter | None = None,
+) -> Proposal | None:
+    """Sell the near expiry, buy the far one, same strike.
+
+    Max loss is the debit paid. Note the structure's `expiry` will read as the FAR leg, which
+    is correct for the dedup fingerprint but is not when the trade resolves — the near leg
+    expiring is the event that matters.
+    """
+    liquidity = liquidity or LiquidityFilter()
+    pool = usable(contracts, liquidity)
+    if near_expiry >= far_expiry:
+        return None
+    if (far_expiry - near_expiry).days < config.far_min_gap:
+        return None
+
+    sign = -1.0 if right is Right.PUT else 1.0
+    near = select_by_delta(pool, right, near_expiry, sign * abs(config.target_delta))
+    if not near:
+        return None
+    # The far leg must be the SAME strike — that is what makes it a calendar rather than a
+    # diagonal, and what keeps the risk profile symmetric.
+    far = next(
+        (c for c in pool if c.right is right and c.expiry == far_expiry and c.strike == near.strike),
+        None,
+    )
+    if not far:
+        return None
+
+    q = config.qty
+    debit_per_share = far.price_to_buy(config.fill) - near.price_to_sell(config.fill)
+    if debit_per_share <= 0:
+        return None  # the far leg is not dearer than the near one: inverted term structure
+
+    debit = debit_per_share * CONTRACT_SIZE * q
+    # A calendar's upside is not a fixed geometric quantity the way a vertical's is — it
+    # depends on where the underlying sits at near expiry and on the far leg's remaining
+    # value. Estimating it as the debit is deliberately conservative: it means the credit
+    # and profit-quality gates judge the structure on what it certainly risks rather than on
+    # a modelled best case.
+    return Proposal(
+        underlying=near.underlying,
+        strategy=f"calendar_{right.value}",
+        legs=(
+            Leg(near.symbol, Side.SELL, q, right, near.strike, near_expiry),
+            Leg(far.symbol, Side.BUY, q, right, far.strike, far_expiry),
+        ),
+        max_loss=debit,
+        max_profit=debit,  # conservative placeholder, see above
+        net_credit=-debit,
+        bid_ask_pct=_structure_spread_pct([near, far], far.mid - near.mid),
     )

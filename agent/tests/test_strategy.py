@@ -373,3 +373,26 @@ def test_conviction_survives_trailing_punctuation():
     ]:
         got = parse_nominations(line, "scout_premium", "income", UNIVERSE)[0].conviction
         assert got == expected, f"{line!r} -> {got}, expected {expected}"
+
+
+def test_a_scout_that_declines_is_taken_at_its_word():
+    """A live scout wrote 'No nominations.' and then explained why — and the explanation,
+    which mentioned QQQ, was parsed as a QQQ nomination. The ticker is in the universe and
+    the line looked like any other, so the universe filter could not catch it."""
+    text = (
+        "No nominations.\n\n"
+        "QQQ IV/RV 1.05x is cheap (not rich) — premium selling unpaid, favors debit "
+        "strategies instead. SPY 1.19x and IWM 1.24x show no clear edge for sellers.\n"
+    )
+    assert parse_nominations(text, "scout_premium", "income", UNIVERSE) == []
+
+
+def test_declining_phrases_are_matched_at_the_head_only():
+    """A scout that nominates and later mentions standing down on ONE name must still have
+    its nominations read."""
+    text = (
+        "QQQ: income — rich IV. Conviction 4.\n"
+        "I am standing down on SPY specifically.\n"
+    )
+    noms = parse_nominations(text, "scout_premium", "income", UNIVERSE)
+    assert [n.underlying for n in noms] == ["QQQ"]

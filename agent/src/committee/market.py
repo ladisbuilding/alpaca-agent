@@ -26,6 +26,7 @@ from typing import Any
 
 from .chain import Contract, contracts_from_snapshots
 from .gates import OpenPosition, PortfolioState
+from .regime import RegimeRead, classify
 
 # The strikes a premium seller would actually trade. Outside this band the quotes are
 # illiquid and their implied vol is noise — see `realized_vol` and `describe` below.
@@ -98,11 +99,29 @@ class AlpacaRest:
             f"{self._trade}/account/activities/{activity_type}?page_size={page_size}"
         )  # type: ignore[return-value]
 
-    def option_snapshots(self, underlying: str, limit: int = 1000) -> dict[str, Any]:
-        return self._get(
+    def option_snapshots(
+        self,
+        underlying: str,
+        limit: int = 1000,
+        expiry_from: date | None = None,
+        expiry_to: date | None = None,
+    ) -> dict[str, Any]:
+        """Snapshots, optionally restricted to an expiry window.
+
+        ⚠️ Without a window the endpoint returns the NEAREST 1000 contracts, which on a
+        liquid name is only 0-3 DTE. That silently starved every strategy with a longer DTE
+        window — a directional sleeve asking for 5-15 DTE found nothing and reported
+        NO_STRUCTURE, which reads as "no good trade" rather than "no data".
+        """
+        url = (
             f"{self._data}/v1beta1/options/snapshots/{underlying}"
             f"?feed=indicative&limit={limit}"
         )
+        if expiry_from:
+            url += f"&expiration_date_gte={expiry_from.isoformat()}"
+        if expiry_to:
+            url += f"&expiration_date_lte={expiry_to.isoformat()}"
+        return self._get(url)
 
     def latest_stock_quote(self, symbols: str) -> dict[str, Any]:
         return self._get(f"{self._data}/v2/stocks/quotes/latest?symbols={symbols}&feed=iex")
@@ -137,6 +156,24 @@ class MarketSnapshot:
 
     def chain(self, underlying: str) -> tuple[Contract, ...]:
         return self.chains.get(underlying.upper(), ())
+
+    def median_tradable_iv(self, underlying: str) -> float | None:
+        """Median IV across strikes we would actually trade — never the whole chain."""
+        from .market import TRADABLE_DELTA_LO, TRADABLE_DELTA_HI  # local: avoid cycle
+
+        ivs = sorted(
+            c.implied_volatility
+            for c in self.chain(underlying)
+            if c.delta is not None
+            and c.implied_volatility
+            and TRADABLE_DELTA_LO <= abs(c.delta) <= TRADABLE_DELTA_HI
+            and c.bid > 0
+        )
+        return ivs[len(ivs) // 2] if ivs else None
+
+    def regime(self, underlying: str) -> RegimeRead:
+        u = underlying.upper()
+        return classify(self.median_tradable_iv(u), self.realized.get(u), u)
 
     def describe(self, underlying: str) -> str:
         """Compact, model-readable summary of one underlying.
@@ -253,25 +290,44 @@ def take_snapshot(rest: AlpacaRest, underlyings: list[str]) -> MarketSnapshot:
     realized: dict[str, float] = {}
     for u in underlyings:
         u = u.upper()
-        try:
-            chains[u] = tuple(contracts_from_snapshots(rest.option_snapshots(u)))
-        except urllib.error.HTTPError as exc:
-            chains[u] = ()
-            print(f"  !! {u} chain fetch failed: {exc.code}")
+        # Two windows, merged: the nearest contracts for income and a calendar's near leg,
+        # plus a longer-dated band for directional spreads and a calendar's far leg. One
+        # unfiltered call returns only the nearest 1000, which is 0-3 DTE on a liquid name.
+        today = datetime.now(timezone.utc).date()
+        merged: dict[str, Contract] = {}
+        for lo, hi in ((0, 10), (10, 35)):
+            try:
+                payload = rest.option_snapshots(
+                    u,
+                    expiry_from=today + timedelta(days=lo),
+                    expiry_to=today + timedelta(days=hi),
+                )
+                for c in contracts_from_snapshots(payload):
+                    merged[c.symbol] = c
+            except urllib.error.HTTPError as exc:
+                print(f"  !! {u} chain fetch {lo}-{hi}d failed: {exc.code}")
+        chains[u] = tuple(merged.values())
+        if not chains[u]:
+            print(f"  !! {u} chain empty")
         try:
             quotes = rest.latest_stock_quote(u).get("quotes", {}).get(u, {})
             bid, ask = float(quotes.get("bp", 0)), float(quotes.get("ap", 0))
             if bid and ask:
                 spot[u] = round((bid + ask) / 2, 2)
-        except Exception:  # noqa: BLE001 — spot is nice to have, not required
-            pass
+        except Exception as exc:  # noqa: BLE001 — spot is nice to have, not required
+            print(f"  !! {u} spot unavailable: {type(exc).__name__}: {exc}")
         try:
-            closes = [float(b["c"]) for b in rest.daily_bars(u, limit=40) if b.get("c")]
+            closes = [float(b["c"]) for b in rest.daily_bars(u, sessions=40) if b.get("c")]
             rv = realized_vol(closes)
             if rv:
                 realized[u] = rv
-        except Exception:  # noqa: BLE001
-            pass
+            else:
+                print(f"  !! {u} realized vol unavailable: only {len(closes)} closes")
+        except Exception as exc:  # noqa: BLE001
+            # Loudly. A silent failure here reads downstream as "regime unknown", which looks
+            # like a market condition rather than a broken call — this exact swallow hid a
+            # TypeError from a renamed parameter.
+            print(f"  !! {u} realized vol failed: {type(exc).__name__}: {exc}")
 
     return MarketSnapshot(
         taken_at=datetime.now(timezone.utc),

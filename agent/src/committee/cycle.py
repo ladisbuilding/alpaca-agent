@@ -45,9 +45,12 @@ from .roles import (
     SCOUT_PREMIUM,
     Role,
 )
+from .regime import Regime
 from .strategy import (
+    CalendarConfig,
     DirectionalConfig,
     IncomeConfig,
+    build_calendar,
     build_credit_vertical,
     build_debit_vertical,
     build_iron_condor,
@@ -179,6 +182,17 @@ def parse_nominations(
       restates its pick as a summary line would otherwise be counted twice, which inflates
       the nomination count and sends the same structure through the gates repeatedly.
     """
+    # A scout that declines must be taken at its word. One that wrote "No nominations." and
+    # then EXPLAINED why — "QQQ IV/RV 1.05x is cheap (not rich)..." — had a QQQ nomination
+    # parsed straight out of its reasoning, because the ticker is in the universe and the
+    # line looked like every other line. An explicit refusal outranks the line scanner.
+    first_line = next((l.strip().lower() for l in text.splitlines() if l.strip()), "")
+    if any(
+        phrase in first_line
+        for phrase in ("no nomination", "none qualify", "nothing qualifies", "standing down", "no candidates")
+    ):
+        return []
+
     allowed = {u.upper() for u in universe} if universe else None
     seen: set[tuple[str, str]] = set()
     out: list[Nomination] = []
@@ -234,6 +248,8 @@ def build_for(
         return None
     liquidity = LiquidityFilter()
     cfg = income if nom.sleeve == "income" else directional
+    if nom.sleeve == "long_premium" and nom.direction is None:
+        cfg = directional  # placeholder; the calendar branch picks its own expiries
     expiries = expiries_within(chain, snapshot.today, cfg.min_dte, cfg.max_dte)
     if not expiries:
         return None
@@ -245,6 +261,23 @@ def build_for(
         if nom.direction == "bearish":
             return build_credit_vertical(chain, expiry, Right.CALL, income, liquidity)
         return build_iron_condor(chain, expiry, income, liquidity)
+
+    if nom.sleeve == "long_premium":
+        # Directionless view in a cheap-premium regime → calendar. With a direction, a debit
+        # vertical expresses it more cleanly than a calendar does.
+        if nom.direction is None:
+            cal = CalendarConfig()
+            nears = expiries_within(chain, snapshot.today, cal.near_min_dte, cal.near_max_dte)
+            fars = expiries_within(chain, snapshot.today, cal.near_min_dte + cal.far_min_gap, 60)
+            for near in nears:
+                far = next((f for f in fars if (f - near).days >= cal.far_min_gap), None)
+                if far:
+                    built = build_calendar(chain, near, far, Right.CALL, cal, liquidity)
+                    if built:
+                        return built
+            return None
+        right = Right.PUT if nom.direction == "bearish" else Right.CALL
+        return build_debit_vertical(chain, expiry, right, directional, liquidity)
 
     right = Right.PUT if nom.direction == "bearish" else Right.CALL
     return build_debit_vertical(chain, expiry, right, directional, liquidity)
@@ -260,14 +293,34 @@ async def _scout(
     sleeve: str,
 ) -> list[Nomination]:
     context = "\n".join(snapshot.describe(u) for u in universe)
+    reads = [snapshot.regime(u) for u in universe]
+    verdicts = "\n".join(f"  {r.explain()}" for r in reads)
+    # Whether the strategy's premise holds today is arithmetic, not a matter of opinion —
+    # so the scouts are told the answer rather than asked to derive it.
+    sellable = [r.underlying for r in reads if r.regime is Regime.PREMIUM_RICH]
+    buyable = [r.underlying for r in reads if r.regime is Regime.PREMIUM_CHEAP]
     prompt = (
         f"Snapshot taken {snapshot.taken_at:%Y-%m-%d %H:%M} UTC. Market "
         f"{'OPEN' if snapshot.is_open else 'CLOSED'}.\n"
         f"Equity ${snapshot.portfolio.equity:,.0f}, "
         f"{len(snapshot.portfolio.open_positions)} open position(s).\n\n"
         f"Universe:\n{context}\n\n"
-        "Nominate from this universe only. One nomination per line, starting with the ticker. "
-        "Return nothing if nothing qualifies."
+        f"Volatility regime (measured deterministically — do not re-derive these):\n{verdicts}\n\n"
+        + (
+            f"Premium is RICH on: {', '.join(sellable)}. Selling defined-risk premium is "
+            "justified there.\n"
+            if sellable
+            else "Premium is rich NOWHERE today — selling it is not paid for.\n"
+        )
+        + (
+            f"Premium is CHEAP on: {', '.join(buyable)}. Buying premium (debit verticals, "
+            "calendars) is the appropriate expression there.\n"
+            if buyable
+            else ""
+        )
+        + "\nNominate from this universe only, and only where the regime supports your sleeve. "
+        "One nomination per line, starting with the ticker. Returning nothing is correct and "
+        "common — a regime with no edge deserves no nominations."
     )
     try:
         async with scoped_session(role.toolsets, creds) as (session, schemas):

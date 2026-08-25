@@ -448,3 +448,7 @@ Luke asked whether this could quietly cost a lot. Measured rather than reassured
 persists (`sleepAfter=10m`), so the first request after a deploy can still hit the old code —
 and with `max_instances: 1` the swap returns **503 "no Container instance available"** while it
 provisions. **Poll `/health` until it comes back before testing a change.**
+
+### 2026-08-25 — auto-sync (1 commits)
+
+- market: measure IV over tradable strikes only, plus deterministic realized vol
