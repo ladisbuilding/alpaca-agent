@@ -2,58 +2,43 @@
 
 ## Current State
 
-**Phase:** BUILT AND SELF-DRIVING. All 8 committee roles have run. **83 tests.** Everything deployed
-and verified end to end. ⭐ **FRESH BUILD** — `archived-projects/` is reading material only.
+**Phase:** LIVE on the DEV paper account, trading for real. **145 tests.** All 8 roles have run;
+every path exercised except an exit firing. ⭐ FRESH BUILD — `archived-projects/` is reading only.
 
-**Live:**
-- `https://alpaca-agent.domfly.workers.dev` — dashboard, **the hackathon's required Application URL**
-- `https://alpaca-agent-api.domfly.workers.dev` — Hono + D1, ingest + watchdog cron
-- `https://alpaca-agent-runner.domfly.workers.dev` — Cloudflare Container + cron, **wakes the
-  committee every 30 min during US market hours. Does not depend on Luke's machine.**
-- `github.com/ladisbuilding/alpaca-agent` — **PRIVATE**, flip public before submission
+**Live:** dashboard `alpaca-agent.domfly.workers.dev` (**the required Application URL**) ·
+**`/deck`** (8 slides, live figures, prints to the submission PDF) · api + D1 + watchdog ·
+`alpaca-agent-runner` (Container + cron, every 30 min in market hours, independent of Luke's Mac) ·
+repo `github.com/ladisbuilding/alpaca-agent` — **PRIVATE, flip public before submission.**
 
-**Accounts:** DEV `PA35CQR61R2Q` ($100k, options L3). ⚠️ **1 of 3 paper slots left — reserved for the
-brand-new dedicated submission account on launch day.**
+**⚠️ `DRY_RUN=false`** — placing real orders on `PA35CQR61R2Q`. On launch day the FLAG does not
+change; the **KEYS** do. **Check the account number, not the flag.** → `docs/LAUNCH.md`
 
-**⚠️ Currently `DRY_RUN=true`** — it deliberates and records but places nothing. Correct for the
-observation days. Flip on launch day, deliberately.
+⚠️ **1 of 3 paper-account slots left** — reserved for the brand-new submission account.
 
-**Cost:** ~$0.24 for a cycle blocked pre-gate, **~$2.04 for one that reaches debate**. ~$25/day while
-deliberating every 30 min ⇒ ~$75 of calibration data across Tue–Thu.
+### ⭐⭐⭐ The headline: four strategies tested, four negatives
+| Test | Result |
+|---|---|
+| Selling premium | IV/RV **1.05–1.22x** — not paid for the tail |
+| Buying spreads at mid | mid IS fair value ⇒ EV = **minus friction** |
+| ORB intraday | Sharpe **0.75** out-of-sample vs 1.58 in-sample; +0.028R/trade won't clear an options spread |
+| ORB held overnight | hit **41–52%**, every t-stat inside noise — no edge at all |
 
-### Next — Tuesday at the open (09:30 ET), in order
-1. **Read the overnight cycles**, then **calibrate `WIDE_SPREAD` (15%) and `THIN_CREDIT` (10%)
-   against a LIVE book.** They block nearly everything on after-hours quotes. **Do not tune off
-   closed-market data.** A gate blocking 100% is as broken as one blocking none.
-2. ⭐⭐ **Settle whether the income sleeve's premise holds.** The committee itself showed that on
-   Monday's data **IV was at or BELOW trailing realized** — i.e. no variance premium to sell. If
-   that holds live, `short_delta`/DTE need rethinking. This is the biggest open question.
-3. **Executor is the last untested path** — it exercises itself the first time a structure survives
-   a real debate.
+**There is no validated options edge.** Independently corroborated by `IgorGanapolsky/trading`,
+whose README states the same for put credits. ⇒ **Mandate is now "deploy a small book and manage
+it well"**, with low conviction expressed as SMALL SIZE, not refusal.
 
-### Then
-Wed: README + flip repo public. Thu: submission package (video ≤5min MP4, PDF deck, 16:9 cover,
-public repo, demo URL). Fri 08:00 PT: fresh $100k account, swap keys, `DRY_RUN=false`.
+**Cost:** ~$0.24/cycle blocked pre-gate, ~$2.04 debating. ~$26/day. Caps: $40/day, $6/cycle.
 
-### Settled
-- ✅ **Dedicated Anthropic key in place** (2026-08-24) — in `.dev.vars` and as the container's
-  Worker secret. Verified with a live cycle through the deployed container. Spend now separate
-  from chaz.
-- ✅ **`no_shorting`: DECIDED — leave it alone.** The Auditor recommended setting it so the broker
-  enforces defined-risk-only. Rejected, deliberately:
-  - ⭐ **It would not limit going both ways.** `shorting_enabled` governs shorting SHARES. The
-    committee is already bidirectional **entirely through options**: bearish via
-    `call_credit_spread` + `put_debit_spread`, bullish via `put_credit_spread` +
-    `call_debit_spread`, neutral via `iron_condor`. Selling premium is "short options", also
-    unaffected. **No structure we build needs short stock.**
-  - **Marginal safety is small:** the `UNDEFINED_RISK` gate already blocks uncovered shorts, the
-    executor only ever submits multi-leg defined-risk option orders, and `options_trading_level: 3`
-    already blocks naked calls at the broker.
-  - ⚠️ **Against that, a real unknown: how Alpaca handles ASSIGNMENT with `no_shorting` set.** An
-    assigned short call leaves you briefly short shares before the long leg covers. Changing a live
-    account setting to guard something already guarded, at the cost of an unresolved assignment
-    interaction, is a bad trade four days out.
-  - Revisit only if an equity sleeve is ever added.
+### Next
+1. **Cover image** (16:9 PNG) — not started.
+2. **Video** Thursday, ≤5 min MP4, with real results and real transcripts.
+3. **Flip the repo public** (private lowers the score) + final secret scan.
+4. Friday 06:15 PT: `docs/LAUNCH.md`.
+
+### Open
+- **No exit has fired yet** — needs a position to hit a target, stop, or 1 DTE.
+- **Lessons-memory the AGENT reads** — every finding lives in git where only a human sees it.
+  `IgorGanapolsky/trading` feeds curated lessons back into operations. Post-competition.
 
 ---
 
@@ -514,3 +499,19 @@ within 0.5% of spot at ≤1 DTE closes regardless — *"'Defined risk' ends at 4
 ✅ **END STATE: the full pipeline runs end to end.** QQQ and SPY put debit spreads APPROVED,
 Bear ALLOW on both, final gate passed, executor reached — held only by `DRY_RUN=true`.
 **122 tests.**
+
+### 2026-08-25 (later) — README, per-strategy switches, live deck, launch runbook
+- **`switches.py`** — per-family modes via `STRATEGY_MODES`: `ACTIVE` / `EXIT_ONLY` / `KILLED`.
+  ⭐ **`EXIT_ONLY` stands down ENTRIES while still MANAGING what is held.** A global switch also
+  stopped management, and **a position you have stopped managing is more dangerous than one you
+  never opened.** Pattern borrowed from `IgorGanapolsky/trading`.
+- **`README.md`** — leads with what the agent found when pointed at its own strategy, not with
+  what it can do. Credits TradingAgents + IgorGanapolsky as prior art and says what differs.
+- ⭐ **`/deck`** — 8 × 16:9 slides, results slide reads LIVE from the api. **Built as a page, not
+  a slide file, because the figures ARE the argument and a deck exported Wednesday is stale by
+  Friday.** Each slide is a print sheet with `print-color-adjust: exact`, so **printing to PDF
+  produces the submission deliverable** with no separate export to drift out of sync.
+- **`docs/LAUNCH.md`** — the Friday cutover written down rather than improvised under time
+  pressure. Two traps recorded: `DRY_RUN` is already false so **the flag tells you nothing —
+  check the account number**; and the old container survives ~10 min after deploy, so **poll
+  `/health` before believing a test result** or you verify the old image.
