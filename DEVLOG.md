@@ -330,3 +330,47 @@ between a committee and a chorus.
 vs realized. On this data it is NOT — it is at or below.** If that holds during market hours, the
 premium sleeve has no edge as configured and `short_delta` / DTE window need rethinking.
 **Do not tune off closed-market quotes; re-check at the open.**
+
+### 2026-08-24 (cont.) — AUDITOR wired, and it found a live bug in the risk layer
+- **`agent/src/committee/audit.py`** — deterministic reconciliation, no model in the loop, same
+  principle as the gates: *a number a model can talk itself into is not an audit.* The Auditor
+  agent reads the report and exercises judgment; it never computes the figures.
+- Built to make three lies impossible to tell quietly:
+  1. **Order rows are not trades.** A 4-leg condor is ONE decision. The headline always states
+     decisions NEXT TO raw order rows.
+  2. **Our number must reconcile against the broker's.** We attribute P&L per strategy from our own
+     decision log; the account's own equity change is the independent check. The gap is reported,
+     never absorbed.
+  3. **A great number is a bug until proven otherwise.** Implausible win rates (≥95% at n≥5) and
+     returns above a structure's own max profit are anomalies, not achievements.
+- Other detectors: duplicate fingerprints (the dedup hole), fills with no decision record
+  (something traded that the committee did not decide), decisions marked executed with no fills.
+- ⭐ **`tests/test_audit.py` reconstructs the actual $2,015→$89 incident** — 6 identical structures
+  at a 100% win rate — and asserts BOTH tells fire. A safeguard built for a specific incident is
+  tested against that incident. **83 tests passing.**
+- ✅ **Auditor agent run live** on `account`-only scope (11 tools, `can place orders = False`).
+
+⭐⭐⭐ **The Auditor found a REAL BUG IN THE RISK LAYER on an empty account, before it could do harm:**
+> *"Buying-power footgun, 4x. `buying_power` = $400,000 … but `options_buying_power` = $100,000.
+> Defined-risk options are cash-secured. A sizing gate reading `buying_power` would over-size
+> positions 4x. The binding constraint is $100,000."*
+Confirmed against the live account. `PortfolioState.buying_power` was reading the **4x margin
+figure**, so `INSUFFICIENT_BUYING_POWER` would have authorised **4x the intended risk**. Now uses
+`options_buying_power` (fallback: cash — never the margin number), with tests.
+
+**Three more findings from the same run, all preventive:**
+- ⚠️ **`portfolio_history` is unusable for return math** — 61 of 62 daily bars read `0.0`, the last
+  reads `100000.0`. Any naive return off that series yields +$100,000 or an infinite percentage.
+  **P&L must come from fill activities, never the equity curve.** (We already do; now it is written
+  down.) *"Benign today; catastrophic the day someone charts it."*
+- ⚠️ **The activity ledger does not explain the cash balance** — $100k in `cash` with zero `CSD`
+  records (paper seed, no journal entry). So `sum(activities) → equity` can NEVER reconcile on this
+  account. Our reconciler uses equity CHANGE vs attributed, which is unaffected — but any future
+  reconciler asserting that identity would be wrong by $100k from day one.
+- 🔔 **LUKE'S CALL: the account config does not enforce the mandate.** `shorting_enabled = true`.
+  Auditor recommends `no_shorting = true` so the BROKER enforces defined-risk-only rather than
+  trusting our strategy layer. (`options_trading_level` 3 already blocks naked calls.) **Changing
+  account settings needs Luke — not doing it unasked.**
+- ⭐ **It also declared its own blind spot honestly:** *"I have no tool for open positions or working
+  orders… That inference is strong but it is an inference."* — the `account`-only scope working as
+  designed, and the agent saying so rather than bluffing.

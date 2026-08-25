@@ -150,6 +150,28 @@ and tuning all still happen during the week — and all of it is postable.
 >
 > they talked me out of my own strategy
 
+**my auditor agent found a bug in my risk code. on an empty account** ⭐
+> wired up the auditor last. gave it read-only access to fills, nothing else
+>
+> ran it on an account with zero trades. expected "nothing to report"
+>
+> instead: "buying_power = $400,000 but options_buying_power = $100,000. defined-risk
+> options are cash-secured. a sizing gate reading buying_power would over-size 4x"
+>
+> checked. my gate was reading the wrong field. it would have authorised 4x the risk
+>
+> found on an empty book, before a single trade
+
+**it also told me what it couldn't see**
+> the auditor's last section was titled "audit gap i cannot close"
+>
+> "i have no tool for open positions or working orders. i verified zero fills; i INFERRED
+> zero positions. that inference is strong but it is an inference"
+>
+> it's scoped to account data only, on purpose
+>
+> and it said so instead of bluffing
+
 **the scout was wrong and the committee caught it**
 > built the whole thing on "sell premium when IV is rich vs realized"
 >

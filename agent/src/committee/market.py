@@ -63,6 +63,13 @@ class AlpacaRest:
     def positions(self) -> list[dict[str, Any]]:
         return self._get(f"{self._trade}/positions")  # type: ignore[return-value]
 
+    def activities(self, activity_type: str = "FILL", page_size: int = 100) -> list[dict[str, Any]]:
+        """Account activities — FILLs are what actually happened, as opposed to orders,
+        which are only what was asked for."""
+        return self._get(
+            f"{self._trade}/account/activities/{activity_type}?page_size={page_size}"
+        )  # type: ignore[return-value]
+
     def option_snapshots(self, underlying: str, limit: int = 1000) -> dict[str, Any]:
         return self._get(
             f"{self._data}/v1beta1/options/snapshots/{underlying}"
@@ -152,10 +159,19 @@ def _positions_to_state(account: dict[str, Any], raw: list[dict[str, Any]]) -> P
             )
         )
 
+    # ⚠ `buying_power` is the 4x-margin figure ($400k on a $100k account) and is NOT the
+    # constraint that binds defined-risk options — those are cash-secured, so
+    # `options_buying_power` ($100k) is. Sizing off `buying_power` authorises 4x the
+    # intended risk. Found by the Auditor agent on an empty book, before it could do harm.
+    options_bp = account.get("options_buying_power")
+    binding_bp = float(
+        options_bp if options_bp is not None else account.get("cash", account["buying_power"])
+    )
+
     return PortfolioState(
         equity=float(account["equity"]),
         cash=float(account["cash"]),
-        buying_power=float(account["buying_power"]),
+        buying_power=binding_bp,
         realized_pnl_today=float(account["equity"]) - float(account.get("last_equity", account["equity"])),
         open_positions=tuple(positions),
     )
