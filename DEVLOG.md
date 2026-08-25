@@ -452,3 +452,65 @@ provisions. **Poll `/health` until it comes back before testing a change.**
 ### 2026-08-25 — auto-sync (1 commits)
 
 - market: measure IV over tradable strikes only, plus deterministic realized vol
+
+### 2026-08-25 — the strategy failed its own tests, then the mandate changed
+**First live market day.** 3 cron cycles ran unattended from the opening bell; nothing depended
+on Luke's machine. $8.83 spent, no watchdog alerts. Structures reached debate for the first
+time in live markets — and every single one was killed. Investigating why produced the day.
+
+**⭐⭐⭐ The scouts were being fed a broken number.** `describe()` reported a chain-wide median
+IV, polluted by deep-ITM strikes trading 1-13 contracts. That inflated SPY to 22-24% when the
+strikes we would actually sell price at 13-16%. **Every nomination rested on a "3x IV/RV"
+premise that did not exist**, and the Bear killed all five debates on exactly that point.
+Fixed: IV measured only over quoted strikes in the 8-45 delta band, and realized vol computed
+deterministically over a FIXED 30-session window so a scout cannot pick a flattering lookback.
+**Measured truth: SPY 1.19x, QQQ 1.06x, IWM 1.22x — no variance premium anywhere.**
+
+**⭐⭐ Added a deterministic regime detector** (`regime.py`): IV/RV >1.30 sell premium, <1.10 buy
+it, between stand down. The premium scout now stands down explicitly — *"None of the three
+underlyings meet the income sleeve's bar, so I'm standing down"* — instead of nominating on a
+false premise. Added **calendar spreads** (the canonical low-IV structure), raised income
+min_dte 1→2 (the assignment trap) and directional to 5-15 DTE.
+
+**⭐⭐⭐ Re-validated ORB on 6 months of genuinely unseen data (Feb-Aug 2026).** Reimplemented
+fresh in Python from the archived rules. Honest out-of-sample: **QQQ Sharpe 0.75, SPY 1.04,
+IWM -1.63, TSLA 2.70** — against an archived in-sample 1.58 for QQQ. Two cautions: the archived
+**symbol rankings did not hold** (it called SPY a failure; SPY is now second best — symbol
+selection overfitting), and QQQ's **+0.028R/trade is too thin to survive options friction**.
+⇒ Then tested whether ORB predicts anything AFTER its session: **it does not.** Hit rates
+41-52%, every t-stat inside noise, TSLA actively anti-predictive by day 3. **ORB is an intraday
+equity edge and cannot be wrapped in options.** Ten minutes of testing instead of a week of losses.
+
+**⚠️ Four strategies tested, four negatives. We have no validated options edge.** Premium
+selling unpaid; debit spreads are fair value minus friction; ORB intraday too thin; ORB
+multi-day nonexistent.
+
+**⭐⭐⭐ MANDATE CHANGE (Luke, 2026-08-25): deploy a small book and manage it well.** Not
+"only trade proven edges". The distinction that keeps it honest: **low conviction is expressed
+through SMALL SIZE, not through refusal.** Gates and defined-risk constraints unchanged. The
+Bear now reserves KILL for trades that are actually BAD (mispriced tail, ignored binary,
+friction eating the whole gain) rather than merely unexciting, and returns a tolerable size
+otherwise. Rationale beyond P&L: the brief asks an agent to demonstrate it *"manages positions
+and performs"* — an agent that never trades fails two of the four verbs outright.
+
+**⭐⭐ Built position management** (`manage.py`) — previously we could only OPEN; positions would
+run to expiry unmanaged. Deterministic exits, no model in the loop: profit target at 50% of max
+profit, stop at 2x the amount at risk, time stop and **assignment-risk exit** (a short strike
+within 0.5% of spot at ≤1 DTE closes regardless — *"'Defined risk' ends at 4pm"*).
+
+**Three bugs found by running it, each of which silently inverted behaviour:**
+1. ⚠️⚠️ **A negated word flipped a real decision.** The Bear wrote *"it's symmetric, not adverse,
+   so **not a kill**"* and recommended ALLOW; the PM said TAKE. Recorded as **BLOCKED by
+   COMMITTEE**, because the parser did `"KILL" in text.upper()`. Same class as the phantom
+   `NOTE` ticker: naive substring matching on model prose. Now reads the LAST non-negated
+   standalone verdict.
+2. ⚠️⚠️ **NEAR_CLOSE compared a UTC clock against a 16:00 EASTERN close.** The container runs in
+   UTC, so 15:48Z read as 12 minutes to the close when it was 11:48 ET, mid-session.
+   **It would have blocked every afternoon entry of the competition.**
+3. **The chain fetch returned only the nearest 1000 contracts (0-3 DTE)**, starving every
+   longer-dated strategy — reported as NO_STRUCTURE, which reads as "no good trade" rather than
+   "no data". Now fetches two expiry windows and merges.
+
+✅ **END STATE: the full pipeline runs end to end.** QQQ and SPY put debit spreads APPROVED,
+Bear ALLOW on both, final gate passed, executor reached — held only by `DRY_RUN=true`.
+**122 tests.**

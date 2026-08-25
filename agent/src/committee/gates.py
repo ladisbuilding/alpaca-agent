@@ -19,7 +19,7 @@ not a silent no-op.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 from enum import Enum
 from typing import Iterable, Sequence
 
@@ -140,6 +140,15 @@ class GateResult:
 CONTRACT_SIZE = 100
 MARKET_CLOSE = time(16, 0)  # ET
 
+# US equities close at 16:00 Eastern. The gate below must compare against ET regardless of
+# where the process runs — the container runs in UTC, where a raw 15:48 clock reading looked
+# like 12 minutes to the close when it was actually 11:48 ET, mid-session. That would have
+# blocked every afternoon entry during the competition.
+#
+# Fixed offset rather than a tz database: EDT (UTC-4) holds through 2026-11-01, well past
+# this project's horizon. Revisit if it ever runs into November.
+ET = timezone(timedelta(hours=-4))
+
 
 def verify_defined_risk(proposal: Proposal) -> float | None:
     """Independently re-derive max loss for vertical-spread-shaped structures.
@@ -239,13 +248,14 @@ def evaluate(
     if not market_open:
         result.block("MARKET_CLOSED", "Market is closed.")
     else:
-        close_dt = datetime.combine(now.date(), MARKET_CLOSE, tzinfo=now.tzinfo)
+        now_et = now.astimezone(ET)
+        close_dt = datetime.combine(now_et.date(), MARKET_CLOSE, tzinfo=ET)
         cutoff = close_dt - timedelta(minutes=config.no_new_trades_within_minutes_of_close)
-        if now >= cutoff:
+        if now_et >= cutoff:
             result.block(
                 "NEAR_CLOSE",
                 f"Within {config.no_new_trades_within_minutes_of_close}m of the close "
-                f"({now:%H:%M} >= {cutoff:%H:%M}) — liquidity thins and fills degrade.",
+                f"({now_et:%H:%M} ET >= {cutoff:%H:%M} ET) — liquidity thins and fills degrade.",
             )
 
     # ── DEFINED RISK ───────────────────────────────────────────────────────────────

@@ -389,3 +389,31 @@ def test_summarize_names_the_gates():
 def test_leg_rejects_nonpositive_qty():
     with pytest.raises(ValueError):
         Leg("QQQ260828P00696000", Side.SELL, 0, Right.PUT, 696.0, EXPIRY)
+
+
+# ── timezone ───────────────────────────────────────────────────────────────────────
+
+UTC = timezone.utc
+
+
+def test_near_close_is_measured_in_eastern_not_wall_clock():
+    """The container runs in UTC. A raw 15:48 reading looked like 12 minutes to the 16:00
+    close when it was actually 11:48 ET — mid-session — which blocked every afternoon entry."""
+    midday_et = datetime(2026, 8, 25, 15, 48, tzinfo=UTC)  # 11:48 ET
+    result = evaluate(condor(), healthy_portfolio(), CONFIG, midday_et)
+    assert "NEAR_CLOSE" not in result.blocked_by, result.reasons
+
+
+def test_near_close_still_fires_when_it_actually_is_near_the_close():
+    late_et = datetime(2026, 8, 25, 19, 50, tzinfo=UTC)  # 15:50 ET
+    result = evaluate(condor(), healthy_portfolio(), CONFIG, late_et)
+    assert "NEAR_CLOSE" in result.blocked_by
+
+
+def test_near_close_agrees_across_timezones_for_the_same_instant():
+    """The same moment expressed in UTC and in Pacific must reach the same verdict."""
+    instant_utc = datetime(2026, 8, 25, 19, 50, tzinfo=UTC)
+    instant_pt = instant_utc.astimezone(timezone(timedelta(hours=-7)))
+    a = evaluate(condor(), healthy_portfolio(), CONFIG, instant_utc)
+    b = evaluate(condor(), healthy_portfolio(), CONFIG, instant_pt)
+    assert a.blocked_by == b.blocked_by

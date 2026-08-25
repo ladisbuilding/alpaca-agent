@@ -181,6 +181,41 @@ and tuning all still happen during the week — and all of it is postable.
 >
 > better to find that from a bear agent on monday than from the p&l on friday
 
+**the word "not" cost me a trade** ⭐
+> my bear agent wrote: "it's symmetric, not adverse, so not a kill"
+>
+> then: "ALLOW, 1 lot"
+>
+> my PM said TAKE
+>
+> my code recorded: BLOCKED BY COMMITTEE
+>
+> because i'd written `if "KILL" in text.upper()`
+>
+> the word kill appeared. inside a sentence saying the opposite
+
+**my agent told me my strategy doesn't work** ⭐⭐
+> spent a day testing four options strategies
+>
+> selling premium: IV is 1.06x realized. you're not being paid
+> buying spreads: mid IS fair value. EV = minus friction
+> my old ORB backtest: sharpe 1.58 in-sample → 0.75 out of sample
+> ORB held overnight: hit rate 46-51%. pure noise
+>
+> four tests, four negatives
+>
+> i'd rather find that in a backtest on monday than in the p&l on friday
+
+**a timezone bug that would have cost the whole afternoon**
+> gate said "within 15 min of the close" at 15:48
+>
+> 15:48 UTC. the container runs in UTC. that's 11:48 in new york
+>
+> mid-session
+>
+> it would have blocked every afternoon trade of the competition and the reason
+> string would have looked completely plausible
+
 ## Tier 2 — good. Process and judgment.
 
 **p&l is 1 of 5**

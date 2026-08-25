@@ -164,6 +164,38 @@ def _structure_dict(p: Proposal) -> dict[str, Any]:
     }
 
 
+def read_verdict(text: str, *, default: str = "ALLOW") -> str:
+    """Extract the Bear's verdict from its reply.
+
+    A naive `"KILL" in text` inverted a real decision: the Bear wrote *"It's symmetric, not
+    adverse, so not a kill"* — recommending ALLOW — and the committee's TAKE was recorded as
+    a refusal. The word appeared inside a sentence saying the opposite.
+
+    The prompt asks for the verdict at the END, so the LAST standalone occurrence wins, and
+    an occurrence negated by a preceding "not" is ignored.
+    """
+    upper = text.upper()
+    last: tuple[int, str] | None = None
+    for word in ("KILL", "ALLOW"):
+        start = 0
+        while True:
+            i = upper.find(word, start)
+            if i == -1:
+                break
+            start = i + 1
+            # Skip a negated mention: "not a kill", "not kill", "rather than kill".
+            preceding = upper[max(0, i - 24) : i]
+            if "NOT " in preceding or "RATHER THAN " in preceding or "N'T " in preceding:
+                continue
+            # Skip mentions inside a longer word (KILLED, ALLOWANCE, ALLOWED).
+            after = upper[i + len(word) : i + len(word) + 2]
+            if after[:1].isalpha():
+                continue
+            if last is None or i > last[0]:
+                last = (i, word)
+    return last[1] if last else default
+
+
 def parse_nominations(
     text: str, source: str, default_sleeve: str, universe: Sequence[str] | None = None
 ) -> list[Nomination]:
@@ -476,7 +508,7 @@ async def run_cycle(
             )
         _record_turn(record, bear_turn)
         deliberation.bear = bear_turn.text
-        deliberation.bear_verdict = "KILL" if "KILL" in bear_turn.text.upper() else "ALLOW"
+        deliberation.bear_verdict = read_verdict(bear_turn.text)
         deliberation.evidence += bear_turn.evidence
 
         async with scoped_session(RISK_OFFICER.toolsets, creds) as (session, schemas):
@@ -498,7 +530,14 @@ async def run_cycle(
         _record_turn(record, pm_turn)
         deliberation.pm_decision = pm_turn.text
 
-        if "PASS" in pm_turn.text.upper()[:400] or deliberation.bear_verdict == "KILL":
+        # The PM is asked to open with TAKE or PASS. Read the first line rather than
+        # scanning 400 characters of prose, where "pass" appears in ordinary sentences
+        # ("I'll pass on sizing up", "passes the gate").
+        pm_first = next((l.strip().upper() for l in pm_turn.text.splitlines() if l.strip()), "")
+        pm_passed = pm_first.replace("*", "").lstrip("#").strip().startswith("PASS") or (
+            "DECISION: PASS" in pm_turn.text.upper()[:200]
+        )
+        if pm_passed or deliberation.bear_verdict == "KILL":
             deliberation.final_gate = {
                 "approved": False,
                 "blocked_by": ["COMMITTEE"],

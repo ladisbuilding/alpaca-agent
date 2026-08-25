@@ -396,3 +396,42 @@ def test_declining_phrases_are_matched_at_the_head_only():
     )
     noms = parse_nominations(text, "scout_premium", "income", UNIVERSE)
     assert [n.underlying for n in noms] == ["QQQ"]
+
+
+# ── verdict parsing ────────────────────────────────────────────────────────────────
+
+from committee.cycle import read_verdict  # noqa: E402
+
+
+def test_a_negated_kill_is_not_a_kill():
+    """Live text that inverted a real decision: the Bear recommended ALLOW at 1 lot and the
+    committee's TAKE was recorded as BLOCKED, because 'kill' appeared inside 'not a kill'."""
+    text = (
+        "1. The case is mislabeled. NVDA reports inside the window.\n"
+        "It's symmetric, not adverse, so not a kill — but the record should say so.\n\n"
+        "**ALLOW, 1 lot ($303, 0.30%).**"
+    )
+    assert read_verdict(text) == "ALLOW"
+
+
+def test_a_real_kill_is_read_as_kill():
+    text = "Friction consumes the entire gain.\n\n**KILL** — not paid for the tail."
+    assert read_verdict(text) == "KILL"
+
+
+def test_the_last_verdict_wins():
+    """The prompt asks for the verdict at the end, so a mention early in the reasoning must
+    not outrank the conclusion."""
+    text = "I considered whether to allow this.\n\nVERDICT: KILL — the tail is mispriced."
+    assert read_verdict(text) == "KILL"
+
+
+def test_verdict_ignores_longer_words():
+    """ALLOWED / KILLED inside prose are not verdicts."""
+    assert read_verdict("The structure would be killed by friction. ALLOW, 1 lot.") == "ALLOW"
+
+
+def test_verdict_defaults_to_allow_when_absent():
+    """Under the deploy-and-manage mandate, silence is not a refusal — a missing verdict
+    should not silently block a trade the committee never rejected."""
+    assert read_verdict("I have no strong view here.") == "ALLOW"
