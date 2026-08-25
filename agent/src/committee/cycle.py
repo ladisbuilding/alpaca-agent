@@ -296,8 +296,13 @@ async def run_cycle(
     recent_fingerprints: list[tuple[str, date]] | None = None,
     max_trades: int = 2,
     rehearse: bool = False,
+    max_cycle_usd: float = 6.0,
 ) -> CycleRecord:
-    """`rehearse` tells the gates the market is open even when it is not, purely to
+    """`max_cycle_usd` stops a single sitting that turns pathological. An observed debating
+    cycle costs ~$2; the structural worst case is ~$11. This runs unattended, so it must be
+    able to stand itself down rather than wait to be noticed.
+
+    `rehearse` tells the gates the market is open even when it is not, purely to
     exercise the debate path end to end. Quotes are stale, so the CONCLUSIONS are
     meaningless — the point is proving the plumbing before it runs unattended. Rehearsals
     force dry_run and are marked in the record so they can never be mistaken for a sitting
@@ -386,6 +391,13 @@ async def run_cycle(
 
     # ── 3. Debate the survivors ───────────────────────────────────────────────────
     for deliberation, proposal in survivors:
+        if record.cost_usd >= max_cycle_usd:
+            record.notes.append(
+                f"Spend ceiling reached (${record.cost_usd:.2f} of ${max_cycle_usd:.2f}). "
+                "Remaining candidates were not debated. A sitting that costs this much is "
+                "misbehaving, not working hard."
+            )
+            break
         deliberation.debated = True
         brief = (
             f"Snapshot {snapshot.taken_at:%Y-%m-%d %H:%M} UTC "

@@ -30,6 +30,28 @@ PORT = int(os.environ.get("PORT", "8080"))
 # curl. Every outbound call from this container sends a real agent string.
 UA = "alpaca-committee/0.1 (+https://alpaca-agent.domfly.workers.dev)"
 
+# Daily spend ceiling, checked against the api before a sitting begins. Observed usage is
+# ~$25/day; the structural worst case is ~$140. This runs for a week with nobody watching,
+# so the gap between those two numbers needs a floor under it, not just an expectation.
+# NOTE: this is a soft cap enforced by our own code. The only HARD stop is a spend limit
+# set on the key in the Anthropic Console.
+DAILY_USD_CAP = float(os.environ.get("DAILY_USD_CAP", "40"))
+MAX_CYCLE_USD = float(os.environ.get("MAX_CYCLE_USD", "6"))
+
+
+def spent_today(api: str | None) -> float:
+    """Today's spend, from the api. On failure returns 0.0 — a spend check that cannot
+    reach the ledger must not become the reason the agent stops trading. The Console limit
+    is the backstop for that case."""
+    if not api:
+        return 0.0
+    try:
+        req = urllib.request.Request(f"{api.rstrip('/')}/spend", headers={"user-agent": UA})
+        with urllib.request.urlopen(req, timeout=15) as r:
+            return float(json.load(r).get("spent_today", 0.0))
+    except Exception:  # noqa: BLE001
+        return 0.0
+
 
 def env_config() -> dict[str, str]:
     missing = [
@@ -131,6 +153,15 @@ async def one_cycle(force: bool = False, live: bool | None = None) -> dict:
     dry_run = (os.environ.get("DRY_RUN", "true").lower() != "false") if live is None else not live
     api = os.environ.get("API_ORIGIN")
 
+    spent = spent_today(api)
+    if spent >= DAILY_USD_CAP:
+        return {
+            "skipped": True,
+            "reason": f"daily spend cap reached (${spent:.2f} of ${DAILY_USD_CAP:.2f})",
+            "spent_today": round(spent, 2),
+            "equity": snapshot.portfolio.equity,
+        }
+
     record = await run_cycle(
         snapshot,
         McpCredentials(env["ALPACA_API_KEY_ID"], env["ALPACA_API_SECRET_KEY"], paper=True),
@@ -140,6 +171,7 @@ async def one_cycle(force: bool = False, live: bool | None = None) -> dict:
         kill_switch=os.environ.get("KILL_SWITCH", "false").lower() == "true",
         recent_fingerprints=recent_fingerprints(api),
         max_trades=int(os.environ.get("MAX_TRADES", "2")),
+        max_cycle_usd=MAX_CYCLE_USD,
     )
 
     status, body = post_record(record.to_json())
@@ -151,6 +183,8 @@ async def one_cycle(force: bool = False, live: bool | None = None) -> dict:
         "deliberations": len(record.deliberations),
         "trades_placed": record.trades_placed,
         "cost_usd": round(record.cost_usd, 4),
+        "spent_today_before": round(spent, 2),
+        "daily_cap": DAILY_USD_CAP,
         "forwarded": {"status": status, "body": body},
         "notes": record.notes,
     }

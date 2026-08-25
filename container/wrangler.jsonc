@@ -39,6 +39,11 @@
     // Starts in dry run. Flipped to "false" on launch day, deliberately and visibly.
     "DRY_RUN": "true",
     "MAX_TRADES": "2",
-    "KILL_SWITCH": "false"
+    "KILL_SWITCH": "false",
+    // Soft spend caps enforced by our own code. Observed usage is ~$25/day; the structural
+    // worst case is ~$140. The only HARD stop is a spend limit on the key in the Anthropic
+    // Console — set that too.
+    "DAILY_USD_CAP": "40",
+    "MAX_CYCLE_USD": "6"
   }
 }

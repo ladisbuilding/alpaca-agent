@@ -206,6 +206,30 @@ app.get('/refusals', async (c) => {
   return c.json({ refusals: results })
 })
 
+/**
+ * Spend so far today (UTC). The container checks this before each sitting and stands down
+ * if the day's budget is gone — the agent runs unattended, so a runaway must stop itself
+ * rather than wait to be noticed.
+ */
+app.get('/spend', async (c) => {
+  const today = new Date().toISOString().slice(0, 10)
+  const row = await c.env.DB.prepare(
+    `SELECT COALESCE(SUM(cost_usd), 0) AS spent, COUNT(*) AS cycles
+       FROM cycles WHERE substr(started_at, 1, 10) = ?`
+  )
+    .bind(today)
+    .first<{ spent: number; cycles: number }>()
+  const all = await c.env.DB.prepare(
+    `SELECT COALESCE(SUM(cost_usd), 0) AS spent FROM cycles`
+  ).first<{ spent: number }>()
+  return c.json({
+    day: today,
+    spent_today: Number(row?.spent ?? 0),
+    cycles_today: row?.cycles ?? 0,
+    spent_all_time: Number(all?.spent ?? 0),
+  })
+})
+
 /** Watchdog status, so its verdict is inspectable without waiting for an email. */
 app.get('/watchdog', async (c) =>
   c.json({ result: await runWatchdog(c.env, new Date(), c.req.query('test') === '1') }),

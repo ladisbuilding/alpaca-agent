@@ -422,3 +422,29 @@ through the actual pipeline and looked at it. Three problems:
    UI: *"REHEARSAL — the gates were told the market was open… conclusions mean nothing."*
    Same lesson as the `[TEST]` alert prefix: **if a drill looks like the real thing, it will
    eventually be read as the real thing.**
+
+### 2026-08-24 (cont.) — spend caps, because "bounded" is not the same as "capped"
+Luke asked whether this could quietly cost a lot. Measured rather than reassured:
+- **Observed:** $0.24 for a cycle blocked pre-gate, **$2.04** for one that debates. ~$25/day.
+- **Structural worst case:** 12 turns/cycle (2 scouts + 4 debate roles × 2 survivors + 2
+  executors) × ~$0.90 uncached = **~$11/cycle → ~$140/day → ~$562 by kickoff.**
+- It **cannot** run away infinitely — `max_iterations=8` per turn, `max_tokens=8000`,
+  `max_trades=2`, 13 crons/day are all hard bounds. ⭐ **But nothing enforced the low number, and
+  the gap between $25 and $140 is real for something running unattended for a week.**
+
+**Added:**
+- `GET /spend` — today's spend, cycle count, all-time (D1).
+- **`MAX_CYCLE_USD` (default $6)** — a sitting that exceeds it stops debating remaining
+  candidates and says so in the record. *"A sitting that costs this much is misbehaving, not
+  working hard."*
+- **`DAILY_USD_CAP` (default $40)** — checked against the api BEFORE a sitting starts; over cap
+  ⇒ skip. Every response now reports `spent_today_before` and `daily_cap`.
+- ⚠️ **`spent_today()` returns 0.0 on failure, deliberately** — a spend check that cannot reach
+  the ledger must not become the reason the agent stops trading during the competition.
+  **That is exactly why the Console limit matters: it is the only HARD stop.**
+- ✅ Verified live in the deployed container: `spent_today_before $2.56, daily_cap $40.0`.
+
+⚠️ **Container rollout gotcha:** `wrangler deploy` rebuilds the image, but the RUNNING instance
+persists (`sleepAfter=10m`), so the first request after a deploy can still hit the old code —
+and with `max_instances: 1` the swap returns **503 "no Container instance available"** while it
+provisions. **Poll `/health` until it comes back before testing a change.**

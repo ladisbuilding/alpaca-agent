@@ -294,6 +294,17 @@ and tuning all still happen during the week — and all of it is postable.
 >
 > the most interesting thing it produces and you couldn't see it
 
+**"bounded" is not the same as "capped"**
+> asked myself what my unattended trading agent could cost if it misbehaved
+>
+> every loop IS bounded. 8 iterations per turn, 8k tokens, 2 trades, 13 runs a day
+>
+> so worst case is finite: ~$140/day instead of the ~$25 i actually see
+>
+> finite isn't the same as capped though. added a per-cycle ceiling and a daily one
+>
+> and the note in the code: "a sitting that costs this much is misbehaving, not working hard"
+
 ## Tier 3 — filler. Fine if a day is quiet.
 
 - only 3 paper accounts per alpaca login. burned one on dev, one stays sealed for the submission
