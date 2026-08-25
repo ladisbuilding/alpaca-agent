@@ -85,32 +85,50 @@ export async function runWatchdog(env: Bindings, now = new Date(), force = false
     if (sinceMin < COOLDOWN_MIN) return `stale (${Math.round(ageMin)}m) — within cooldown, not resending`
   }
 
-  const human = ageMin === Infinity ? 'never' : `${Math.round(ageMin)} minutes ago`
+  // A forced test must be unmistakable. If a drill and a real outage look the same in the
+  // inbox, the alert stops meaning anything on the morning it matters.
+  const prefix = force ? '[TEST] ' : ''
+  const gap =
+    ageMin === Infinity ? 'no sitting has ever been recorded' : `the last sitting was ${Math.round(ageMin)} minutes ago`
+
   const result = await sendAlert(
     env,
-    `⚠ Committee has not sat in ${human === 'never' ? 'any recorded session' : human}`,
+    `${prefix}⚠ Committee has gone quiet — ${
+      ageMin === Infinity ? 'no sittings on record' : `${Math.round(ageMin)} minutes since the last sitting`
+    }`,
     [
-      `The agent has not recorded a sitting in ${human}, and the market should be open.`,
+      force
+        ? 'THIS IS A TEST. It was triggered manually via /watchdog?test=1 and does not mean'
+        : 'The market should be open, but the committee has gone quiet.',
+      force ? 'anything is wrong. The wording below is what a real alert looks like.' : '',
       '',
-      'Nothing has necessarily thrown an error — this alert exists because the dangerous',
+      `Right now ${gap}, against a ${STALE_AFTER_MIN}-minute threshold.`,
+      '',
+      'Nothing has necessarily thrown an error. This alert exists because the dangerous',
       'failure is silence: cron stopping, the container failing to boot, or every sitting',
-      'returning "skipped".',
+      'returning "skipped" — none of which raise anything for error reporting to catch.',
       '',
       'Check, in order:',
       '  1. https://alpaca-agent-runner.domfly.workers.dev/health',
       '  2. POST https://alpaca-agent-runner.domfly.workers.dev/run?force=1',
       '  3. wrangler tail alpaca-agent-runner',
       '',
-      `Dashboard: https://alpaca-agent.domfly.workers.dev`,
-    ].join('\n')
+      'Dashboard: https://alpaca-agent.domfly.workers.dev',
+    ]
+      .filter(Boolean)
+      .join('\n')
   )
 
-  await env.DB.prepare(
-    `INSERT INTO alerts (key, last_sent) VALUES ('stale', ?)
-     ON CONFLICT(key) DO UPDATE SET last_sent = excluded.last_sent`
-  )
-    .bind(now.toISOString())
-    .run()
+  // A drill must not start the cooldown — otherwise testing the alert suppresses the next
+  // hour of real ones, which is the exact opposite of what a test is for.
+  if (!force) {
+    await env.DB.prepare(
+      `INSERT INTO alerts (key, last_sent) VALUES ('stale', ?)
+       ON CONFLICT(key) DO UPDATE SET last_sent = excluded.last_sent`
+    )
+      .bind(now.toISOString())
+      .run()
+  }
 
-  return `ALERTED — stale ${Math.round(ageMin)}m — mailgun: ${result}`
+  return `${force ? 'TEST ALERT SENT' : 'ALERTED'} — stale ${Math.round(ageMin)}m — mailgun: ${result}`
 }

@@ -213,6 +213,18 @@ and tuning all still happen during the week — and all of it is postable.
 >
 > code overriding rhetoric, visible in the type
 
+**testing the alarm would have disabled the alarm**
+> forced my new watchdog to fire, just to prove it could
+>
+> the email had bad grammar. fine, fixed it
+>
+> the email was indistinguishable from a real alert. worse, fixed it
+>
+> and the test run wrote the cooldown row. so running a drill would have suppressed
+> the next hour of REAL alerts
+>
+> testing the alarm disabled the alarm. never would have seen it by reading the code
+
 **the alert you need isn't the one you think**
 > was about to wire up error reporting for my trading agent
 >

@@ -273,3 +273,18 @@ rule); (3) budget a full day for the submission package (video + slides + cover 
     but may land in spam the first time. Fine for a self-addressed alert.
 - **Sentry deliberately deferred** — it catches thrown exceptions, which is the failure mode that
   was NOT going to cost the competition. Worth adding after the Auditor and the submission package.
+
+### 2026-08-24 (cont.) — the watchdog test found three bugs in the watchdog
+Luke received the forced test alert. It landed in the inbox (not spam), and reading it surfaced
+three problems — which is precisely the argument for firing an alert before you need it:
+1. **Broken copy.** *"has not sat in 21 minutes ago"* — "N minutes ago" interpolated into a
+   sentence that already supplied "in". A garbled alert is one you trust less.
+2. **A drill was indistinguishable from a real alarm.** The test email said *"the market should be
+   open"* at 5pm on a closed market. If a test and a genuine outage look the same in the inbox, the
+   alert stops meaning anything on the morning it matters. Forced alerts are now prefixed
+   **`[TEST]`** and say plainly that nothing is wrong.
+3. ⚠️⚠️ **Worst, and invisible from the email: the forced test wrote the cooldown row.**
+   Running a drill would have suppressed the next **60 minutes of REAL alerts** — testing the alarm
+   would have disabled it. Only genuine alerts start the cooldown now.
+⭐ **Lesson: firing the alert was worth more than writing it.** Three defects, one of which
+inverted the feature, none visible from reading the code.
