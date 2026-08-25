@@ -288,3 +288,45 @@ three problems — which is precisely the argument for firing an alert before yo
    would have disabled it. Only genuine alerts start the cooldown now.
 ⭐ **Lesson: firing the alert was worth more than writing it.** Three defects, one of which
 inverted the feature, none visible from reading the code.
+
+### 2026-08-24 (cont.) — REHEARSAL: full debate path proven, and it found a strategy problem
+Added `--rehearse` (`run_cycle.py`): tells the gates the market is open AND sets the clock to
+mid-session, purely to exercise Bull → Bear → Risk Officer → PM → Executor before it runs
+unattended. Forces dry_run, marks the record, runs locally so it never touches production data.
+**Rationale: every cycle so far died at MARKET_CLOSED before the debate — four of eight roles had
+never run in a real cycle, and the first unattended run was tomorrow 6:30am PT.**
+
+⭐⭐ **The rehearsal found four bugs that reading the code did not:**
+1. **`rehearse` never reached the PRE-gate** — a patch matched the final gate only. Everything still
+   blocked. (The debate path stayed untested while looking tested.)
+2. ⚠️ **`"Note: both expiries are 0-1 DTE..."` was parsed as a nomination for ticker `NOTE`** and
+   went through the gates as a real candidate. **Fix: nominations must be IN THE UNIVERSE** — scouts
+   are told to nominate from it, so anything else is a parse artifact by definition.
+3. ⚠️ **A scout arguing in prose and then restating its pick counted twice** — one pick became two
+   nominations, building and gating the same structure twice. **Fix: dedupe on (underlying, sleeve).**
+4. ⚠️⚠️ **`"conviction 5."` silently defaulted to 3** — the trailing period means the token fails
+   `isdigit()`. **Every nomination in every prior run was conviction 3.** Conviction orders which
+   candidates get debated at all, so the ordering was meaningless. Now regex-parsed, with tests for
+   `5.` / `4` / `(conviction: 2)` / `4/5` / absent.
+All four now have regression tests (**65 passing**).
+
+✅ **Full debate path RUNS.** SPY + QQQ iron condors reached debate; Bull, Bear, Risk Officer and PM
+all executed. **Cost $2.04 for a debating cycle** (vs $0.24 when everything blocks pre-gate) —
+123k input against **453k cache reads**. Executor still untested: the committee killed both, which
+is correct behaviour on stale closed-market quotes.
+
+⭐⭐⭐ **THE DEBATE FOUND A PROBLEM WITH THE STRATEGY ITSELF — this is the headline.**
+- **Bull corrected its own side's evidence unprompted:** *"Honest correction to the scout: the actual
+  leg IVs are 11.1%–15.4%, not 21–23%. IV/RV is ~2x, not 3x."*
+- **Bear found the scout's edge was a windowing artifact:** the 13-day realized-vol window *starts
+  after* the two largest days in the sample. Extend to 16 sessions and σ goes 7.5% → **11.4%
+  annualized**. Verdict: *"Sold call IV is 11.08%. You are selling the near wing at or below
+  trailing realized. **That is not variance premium.**"*
+- **PM independently re-ran vol over 30 sessions**, produced a window-by-window table
+  (13d 7.6% / 16d 11.4% / 30d 12.3%), concluded the short window was the outlier, and PASSED.
+⇒ **The PM verified rather than siding with the more confident speaker.** This is the difference
+between a committee and a chorus.
+⚠️ **Strategy implication to test with LIVE quotes tomorrow: the income sleeve assumes IV is rich
+vs realized. On this data it is NOT — it is at or below.** If that holds during market hours, the
+premium sleeve has no edge as configured and `short_delta` / DTE window need rethinking.
+**Do not tune off closed-market quotes; re-check at the open.**

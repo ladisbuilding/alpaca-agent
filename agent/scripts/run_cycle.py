@@ -62,6 +62,11 @@ async def main() -> int:
     ap.add_argument("--universe", default=",".join(DEFAULT_UNIVERSE))
     ap.add_argument("--kill-switch", action="store_true")
     ap.add_argument("--max-trades", type=int, default=2)
+    ap.add_argument(
+        "--rehearse",
+        action="store_true",
+        help="tell the gates the market is open so the debate path runs; forces dry run",
+    )
     args = ap.parse_args()
 
     universe = [u.strip().upper() for u in args.universe.split(",") if u.strip()]
@@ -87,6 +92,7 @@ async def main() -> int:
         universe=universe,
         dry_run=not args.live,
         kill_switch=args.kill_switch,
+        rehearse=args.rehearse,
         recent_fingerprints=recent_fingerprints(),
         max_trades=args.max_trades,
     )

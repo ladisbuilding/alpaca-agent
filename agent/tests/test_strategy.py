@@ -301,3 +301,75 @@ def test_debit_spread_survives_the_gates():
     now = datetime(2026, 8, 25, 11, 0, tzinfo=timezone(timedelta(hours=-4)))
     result = evaluate(p, portfolio, RiskConfig(), now)
     assert result.approved, f"blocked by {result.blocked_by}: {result.reasons}"
+
+
+# ── nomination parsing ─────────────────────────────────────────────────────────────
+# Both cases below are real scout output that produced bad nominations in a live run.
+
+from committee.cycle import parse_nominations  # noqa: E402
+
+UNIVERSE = ["QQQ", "SPY", "IWM"]
+
+
+def test_a_prose_caveat_is_not_a_ticker():
+    """A live scout ended with 'Note: both expiries are 0-1 DTE...' and the parser
+    nominated a ticker called NOTE, which then went through the gates as a real
+    candidate."""
+    text = (
+        "QQQ: income — median IV 23-26% vs ~12.4% realized. Conviction 3.\n"
+        "SPY: income — IV/RV ~3x, deepest chain. Conviction 4.\n"
+        "Note: both expiries are 0-1 DTE, so gamma/pin risk is elevated.\n"
+    )
+    noms = parse_nominations(text, "scout_premium", "income", UNIVERSE)
+    assert [n.underlying for n in noms] == ["QQQ", "SPY"]
+    assert "NOTE" not in [n.underlying for n in noms]
+
+
+def test_a_scout_restating_its_pick_counts_once():
+    """The directional scout argued in prose and then restated the pick as a summary
+    line. Both parsed, so one nomination became two and the same structure was built
+    and gated twice."""
+    text = (
+        "QQQ: -5.0% over six sessions, persistent lower-highs, bearish continuation bias.\n"
+        "\n"
+        "QQQ: directional, bearish, six straight down days, conviction 3.\n"
+    )
+    noms = parse_nominations(text, "scout_directional", "directional", UNIVERSE)
+    assert len(noms) == 1
+    assert noms[0].underlying == "QQQ"
+    assert noms[0].direction == "bearish"
+
+
+def test_symbols_outside_the_universe_are_rejected():
+    """Scouts are told to nominate from the universe only, so anything else is a parse
+    artifact rather than a pick."""
+    text = "NVDA: income — rich IV. Conviction 5.\nQQQ: income — also rich. Conviction 3.\n"
+    noms = parse_nominations(text, "scout_premium", "income", UNIVERSE)
+    assert [n.underlying for n in noms] == ["QQQ"]
+
+
+def test_an_empty_reply_yields_no_nominations():
+    """Returning nothing is explicitly a valid scout outcome, not an error."""
+    assert parse_nominations("Nothing qualifies today.", "scout_premium", "income", UNIVERSE) == []
+
+
+def test_conviction_and_direction_are_read_from_the_line():
+    noms = parse_nominations(
+        "SPY: income — bearish setup, conviction 5.", "scout_premium", "income", UNIVERSE
+    )
+    assert noms[0].conviction == 5
+    assert noms[0].direction == "bearish"
+
+
+def test_conviction_survives_trailing_punctuation():
+    """'conviction 5.' has a trailing period, so a bare isdigit() check misses it and
+    silently defaults to 3 — flattening the ordering that decides what gets debated."""
+    for line, expected in [
+        ("QQQ: income — rich IV. Conviction 5.", 5),
+        ("QQQ: income — rich IV, conviction 4", 4),
+        ("QQQ: income — rich IV (conviction: 2)", 2),
+        ("QQQ: income — rich IV, conviction 4/5", 4),
+        ("QQQ: income — no number given", 3),
+    ]:
+        got = parse_nominations(line, "scout_premium", "income", UNIVERSE)[0].conviction
+        assert got == expected, f"{line!r} -> {got}, expected {expected}"

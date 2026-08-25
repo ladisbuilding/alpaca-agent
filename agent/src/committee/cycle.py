@@ -23,9 +23,10 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 from dataclasses import asdict, dataclass, field
 from datetime import date, datetime
-from typing import Any
+from typing import Any, Sequence
 
 from anthropic import AsyncAnthropic
 
@@ -160,13 +161,26 @@ def _structure_dict(p: Proposal) -> dict[str, Any]:
     }
 
 
-def parse_nominations(text: str, source: str, default_sleeve: str) -> list[Nomination]:
+def parse_nominations(
+    text: str, source: str, default_sleeve: str, universe: Sequence[str] | None = None
+) -> list[Nomination]:
     """Pull nominations out of a scout's reply.
 
     Scouts write prose, so this is tolerant by design: a scout that returns nothing usable
     yields no nominations, which is a valid and common outcome rather than an error. Being
     strict here would turn a chatty reply into a crashed cycle.
+
+    Two things make it tolerant WITHOUT being credulous:
+
+    * **Nominations must be in the universe.** Scouts are told to nominate from the universe
+      only, so anything outside it is a parse artifact. Without this, a scout's caveat line
+      "Note: both expiries are 0-1 DTE..." became a nomination for a ticker called NOTE.
+    * **One nomination per (underlying, sleeve).** A scout that argues in prose and then
+      restates its pick as a summary line would otherwise be counted twice, which inflates
+      the nomination count and sends the same structure through the gates repeatedly.
     """
+    allowed = {u.upper() for u in universe} if universe else None
+    seen: set[tuple[str, str]] = set()
     out: list[Nomination] = []
     for raw in text.splitlines():
         line = raw.strip().lstrip("-*0123456789. ").strip()
@@ -175,15 +189,28 @@ def parse_nominations(text: str, source: str, default_sleeve: str) -> list[Nomin
         head = line.split()[0].strip("*:,()").upper()
         if not (1 <= len(head) <= 5 and head.isalpha()):
             continue
-        if head in {"NONE", "NO", "I", "THE", "A", "AN", "IF", "IT", "AT", "AS", "TO"}:
+        if allowed is not None and head not in allowed:
+            continue
+        if head in {"NONE", "NO", "I", "THE", "A", "AN", "IF", "IT", "AT", "AS", "TO", "NOTE"}:
             continue
         lowered = line.lower()
         direction = "bearish" if "bearish" in lowered else ("bullish" if "bullish" in lowered else None)
+        # Read the stated conviction. Tokens carry punctuation ("conviction 5." / "4/5"),
+        # so strip it before testing — a bare isdigit() check silently defaulted every
+        # nomination to 3, which flattened the ordering that decides what gets debated.
         conviction = 3
-        for token in line.replace("/", " ").split():
-            if token.isdigit() and 1 <= int(token) <= 5:
-                conviction = int(token)
-                break
+        m = re.search(r"conviction\D{0,3}([1-5])", line, re.IGNORECASE)
+        if m:
+            conviction = int(m.group(1))
+        else:
+            for token in line.replace("/", " ").split():
+                stripped = token.strip(".,;:()[]*")
+                if stripped.isdigit() and 1 <= int(stripped) <= 5:
+                    conviction = int(stripped)
+                    break
+        if (head, default_sleeve) in seen:
+            continue
+        seen.add((head, default_sleeve))
         out.append(
             Nomination(
                 underlying=head,
@@ -252,7 +279,7 @@ async def _scout(
     if turn.error:
         record.notes.append(f"{role.name} errored: {turn.error}")
         return []
-    return parse_nominations(turn.text, role.name, sleeve)
+    return parse_nominations(turn.text, role.name, sleeve, universe)
 
 
 async def run_cycle(
@@ -268,12 +295,25 @@ async def run_cycle(
     kill_switch: bool = False,
     recent_fingerprints: list[tuple[str, date]] | None = None,
     max_trades: int = 2,
+    rehearse: bool = False,
 ) -> CycleRecord:
+    """`rehearse` tells the gates the market is open even when it is not, purely to
+    exercise the debate path end to end. Quotes are stale, so the CONCLUSIONS are
+    meaningless — the point is proving the plumbing before it runs unattended. Rehearsals
+    force dry_run and are marked in the record so they can never be mistaken for a sitting
+    that mattered."""
     risk = risk or RiskConfig()
     income = income or IncomeConfig()
     directional = directional or DirectionalConfig()
     recent = recent_fingerprints or []
     now = datetime.now().astimezone()
+
+    if rehearse:
+        dry_run = True
+        # A rehearsal has to pretend it is mid-session as well as pretending the market is
+        # open, or NEAR_CLOSE blocks everything the moment you run it in the evening —
+        # which is exactly when you would be rehearsing.
+        now = now.replace(hour=11, minute=0, second=0, microsecond=0)
 
     record = CycleRecord(
         started_at=snapshot.taken_at.isoformat(),
@@ -283,6 +323,12 @@ async def run_cycle(
         open_positions=len(snapshot.portfolio.open_positions),
         universe=universe,
     )
+    gates_see_open = snapshot.is_open or rehearse
+    if rehearse:
+        record.notes.append(
+            "REHEARSAL — gates told the market is open to exercise the debate path. "
+            "Quotes are stale; conclusions here mean nothing. Plumbing only."
+        )
     client = AsyncAnthropic(api_key=anthropic_key)
 
     # ── 1. Scouts nominate (concurrently — they are independent by design) ─────────
@@ -317,7 +363,7 @@ async def run_cycle(
             continue
         gate = evaluate(
             proposal, snapshot.portfolio, risk, now,
-            kill_switch=kill_switch, market_open=snapshot.is_open,
+            kill_switch=kill_switch, market_open=gates_see_open,
             recent_fingerprints=recent,
         )
         deliberation = Deliberation(
@@ -398,8 +444,8 @@ async def run_cycle(
 
         # ── 4. FINAL GATE — deterministic, unconditional, no model in the loop ─────
         final = evaluate(
-            proposal, snapshot.portfolio, risk, datetime.now().astimezone(),
-            kill_switch=kill_switch, market_open=snapshot.is_open,
+            proposal, snapshot.portfolio, risk, now if rehearse else datetime.now().astimezone(),
+            kill_switch=kill_switch, market_open=gates_see_open,
             recent_fingerprints=recent,
         )
         deliberation.final_gate = _gate_dict(final)
