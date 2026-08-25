@@ -34,3 +34,10 @@ CREATE TABLE IF NOT EXISTS decisions (
 );
 CREATE INDEX IF NOT EXISTS idx_decisions_cycle ON decisions(cycle_id);
 CREATE INDEX IF NOT EXISTS idx_decisions_outcome ON decisions(outcome);
+
+-- Alert de-duplication. A watchdog that emails every 30 minutes trains you to ignore it,
+-- which is the same as having no watchdog.
+CREATE TABLE IF NOT EXISTS alerts (
+  key       TEXT PRIMARY KEY,
+  last_sent TEXT NOT NULL
+);

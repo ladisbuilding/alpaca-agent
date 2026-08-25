@@ -8,6 +8,10 @@
   "compatibility_flags": ["nodejs_compat"],
   "observability": { "enabled": true },
   "vars": {},
+
+  // Hourly liveness check. The watchdog itself decides whether a sitting was due, so this
+  // can fire around the clock without emailing at 3am.
+  "triggers": { "crons": ["7 * * * *"] },
   // Cycle records: decisions, debate transcripts, gate outcomes, fills.
   // D1 rather than fleet Postgres — a deployed Worker could not reach fleet Postgres
   // (dropped 2026-08-20), which is exactly the failure that would bite mid-competition.

@@ -11,10 +11,14 @@
 
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
+import { runWatchdog } from './watchdog'
 
 type Bindings = {
   DB: D1Database
   INGEST_TOKEN?: string
+  MAILGUN_API_KEY?: string
+  MAILGUN_DOMAIN?: string
+  ALERT_EMAIL?: string
 }
 
 const app = new Hono<{ Bindings: Bindings }>()
@@ -183,4 +187,19 @@ app.get('/refusals', async (c) => {
   return c.json({ refusals: results })
 })
 
-export default app
+/** Watchdog status, so its verdict is inspectable without waiting for an email. */
+app.get('/watchdog', async (c) =>
+  c.json({ result: await runWatchdog(c.env, new Date(), c.req.query('test') === '1') }),
+)
+
+export default {
+  fetch: app.fetch,
+  /** Hourly liveness check. See src/watchdog.ts for why absence, not errors. */
+  async scheduled(_event: ScheduledController, env: Bindings, ctx: ExecutionContext) {
+    ctx.waitUntil(
+      runWatchdog(env)
+        .then((r) => console.log(`watchdog: ${r}`))
+        .catch((e) => console.error('watchdog failed:', e)),
+    )
+  },
+}

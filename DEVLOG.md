@@ -248,3 +248,28 @@ rule); (3) budget a full day for the submission package (video + slides + cover 
 - Data loads client-side and refreshes every 60s — a relative URL cannot resolve during SSR, and a
   dashboard watched during market hours wants to refresh itself.
 - ⚠️ `@cloudflare/workers-types` must be **^5.x** with wrangler 4.125 (v4 fails ERESOLVE).
+
+### 2026-08-24 (cont.) — liveness watchdog + private repo
+- ✅ **Repo: `github.com/ladisbuilding/alpaca-agent` (PRIVATE, `main`).** Secret-scanned what
+  actually shipped: clean, 46 files, `.dev.vars` gitignored.
+  ⭐ **Decision: ONE repo, private now → flip public before submission.** GitHub flips
+  private→public in one click keeping full history, so "curate a separate public repo" is work with
+  no benefit — and a history-less public repo reads as sanitised. The reason to start private is
+  narrow but real: **git history is permanent**, this is the highest-churn phase, and a key
+  committed by accident needs a history rewrite AND a key rotation. Flip ~Wed.
+- ⭐⭐ **Liveness watchdog before Sentry — deliberately.** In a week-long unattended run the
+  dangerous failure is **SILENCE**, not an exception: cron stops, the container fails to boot, every
+  sitting returns "skipped". Nothing throws, so error reporting sees nothing and you find out
+  Thursday that it stopped trading Tuesday. **Only "I expected a sitting and did not get one"
+  catches that.**
+  - `api/src/watchdog.ts`, hourly cron (`7 * * * *`). Alerts if no sitting in **90 min** during
+    market hours; **60 min cooldown** (a watchdog that fires every 30 min trains you to ignore it).
+  - Market-hours check is deliberately **WIDE** (13:30–20:00 UTC Mon–Fri): a holiday false positive
+    costs one email, a narrow window costs a missed outage. Asymmetric, so err wide.
+  - ✅ **PROVEN, not assumed** — `/watchdog?test=1` forces the alert path past both the hours gate
+    and the cooldown. Fired for real: Mailgun 200, queued. **An alert that has never fired is not a
+    proven alert; the first time it runs should not be the morning it is needed.**
+  - ⚠️ From address is `watchdog@mail.careside.health` (careside's Mailgun domain, reused). Works,
+    but may land in spam the first time. Fine for a self-addressed alert.
+- **Sentry deliberately deferred** — it catches thrown exceptions, which is the failure mode that
+  was NOT going to cost the competition. Worth adding after the Auditor and the submission package.

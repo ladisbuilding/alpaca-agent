@@ -213,6 +213,17 @@ and tuning all still happen during the week — and all of it is postable.
 >
 > code overriding rhetoric, visible in the type
 
+**the alert you need isn't the one you think**
+> was about to wire up error reporting for my trading agent
+>
+> then realised the failure that would actually cost me the week doesn't throw
+>
+> cron stops. container won't boot. every run returns "skipped". silence
+>
+> so i built a watchdog for ABSENCE instead. "i expected a sitting by now and didn't get one"
+>
+> then forced it to fire, because an alert that's never fired isn't an alert
+
 ## Tier 3 — filler. Fine if a day is quiet.
 
 - only 3 paper accounts per alpaca login. burned one on dev, one stays sealed for the submission
