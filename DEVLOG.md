@@ -35,10 +35,25 @@ deliberating every 30 min ⇒ ~$75 of calibration data across Tue–Thu.
 Wed: README + flip repo public. Thu: submission package (video ≤5min MP4, PDF deck, 16:9 cover,
 public repo, demo URL). Fri 08:00 PT: fresh $100k account, swap keys, `DRY_RUN=false`.
 
-### Waiting on Luke
-- **Account config:** Auditor recommends `no_shorting = true` so the BROKER enforces
-  defined-risk-only rather than trusting our code. Account setting ⇒ Luke's call.
-- Dedicated Anthropic API key (currently reusing chaz's) so hackathon spend is tracked separately.
+### Settled
+- ✅ **Dedicated Anthropic key in place** (2026-08-24) — in `.dev.vars` and as the container's
+  Worker secret. Verified with a live cycle through the deployed container. Spend now separate
+  from chaz.
+- ✅ **`no_shorting`: DECIDED — leave it alone.** The Auditor recommended setting it so the broker
+  enforces defined-risk-only. Rejected, deliberately:
+  - ⭐ **It would not limit going both ways.** `shorting_enabled` governs shorting SHARES. The
+    committee is already bidirectional **entirely through options**: bearish via
+    `call_credit_spread` + `put_debit_spread`, bullish via `put_credit_spread` +
+    `call_debit_spread`, neutral via `iron_condor`. Selling premium is "short options", also
+    unaffected. **No structure we build needs short stock.**
+  - **Marginal safety is small:** the `UNDEFINED_RISK` gate already blocks uncovered shorts, the
+    executor only ever submits multi-leg defined-risk option orders, and `options_trading_level: 3`
+    already blocks naked calls at the broker.
+  - ⚠️ **Against that, a real unknown: how Alpaca handles ASSIGNMENT with `no_shorting` set.** An
+    assigned short call leaves you briefly short shares before the long leg covers. Changing a live
+    account setting to guard something already guarded, at the cost of an unresolved assignment
+    interaction, is a bad trade four days out.
+  - Revisit only if an equity sleeve is ever added.
 
 ---
 
