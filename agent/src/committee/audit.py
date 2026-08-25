@@ -137,6 +137,7 @@ def audit(
     decisions: Sequence[dict[str, Any]],
     *,
     now: datetime | None = None,
+    open_unrealized: float | None = None,
 ) -> AuditReport:
     """Reconcile what the committee believes it did against what the broker says happened.
 
@@ -198,12 +199,30 @@ def audit(
     # ── Anomalies. Each one is a specific way the headline could be a lie. ─────────
 
     if not report.reconciles:
-        report.anomalies.append(
-            f"Attributed P&L (${attributed:+,.2f}) does not reconcile with the account's own "
-            f"equity change (${equity_change:+,.2f}); ${report.unattributed:+,.2f} is unexplained. "
-            "Either a position moved that we did not attribute, or an attribution is wrong. "
-            "Do not report the attributed figure until this closes."
-        )
+        # An open position's mark explains part of the gap legitimately: unrealized P&L is
+        # deliberately excluded from the attributed figure, so equity moves while attribution
+        # does not. Say so as a note rather than an anomaly when the numbers agree — an
+        # anomaly list that fires on every open position is one nobody reads.
+        residual = report.unattributed - (open_unrealized or 0.0)
+        if open_unrealized is not None and abs(residual) <= RECONCILIATION_TOLERANCE:
+            report.notes.append(
+                f"The ${report.unattributed:+,.2f} gap is the mark on open positions "
+                f"(${open_unrealized:+,.2f}), which is excluded from attributed P&L by design. "
+                "Marks are not results. Nothing unexplained."
+            )
+        else:
+            report.anomalies.append(
+                f"Attributed P&L (${attributed:+,.2f}) does not reconcile with the account's own "
+                f"equity change (${equity_change:+,.2f}); ${report.unattributed:+,.2f} is unexplained"
+                + (
+                    f", of which ${open_unrealized:+,.2f} is open marks and "
+                    f"${residual:+,.2f} is not."
+                    if open_unrealized is not None
+                    else ". Either a position moved that we did not attribute, or an attribution "
+                    "is wrong."
+                )
+                + " Do not report the attributed figure until this closes."
+            )
 
     for fingerprint, count in seen_fingerprints.items():
         if count > 1:

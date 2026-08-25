@@ -264,3 +264,31 @@ def test_sizing_falls_back_to_cash_when_options_buying_power_is_absent():
     account = {"equity": "50000", "cash": "50000", "buying_power": "200000", "last_equity": "50000"}
     state = _positions_to_state(account, [])
     assert state.buying_power == pytest.approx(50_000.0)
+
+
+def test_an_open_mark_explains_the_gap_and_is_a_note_not_an_anomaly():
+    """Equity moves with an open position while attributed P&L deliberately does not, so the
+    gap is legitimate. Flagging it every time would make the anomaly list noise."""
+    report = audit(
+        account(equity=99_996.0, last_equity=100_000.0),
+        [fill_activity("A", id_="1")],
+        [condor_decision(realized=None, symbols=("A",))],
+        now=NOW,
+        open_unrealized=-4.0,
+    )
+    assert not [a for a in report.anomalies if "reconcile" in a]
+    assert any("Marks are not results" in n for n in report.notes)
+
+
+def test_a_gap_larger_than_the_open_marks_is_still_an_anomaly():
+    """Only the part explained by marks is excused; a residual beyond that is a real finding."""
+    report = audit(
+        account(equity=100_500.0, last_equity=100_000.0),
+        [fill_activity("A", id_="1")],
+        [condor_decision(realized=None, symbols=("A",))],
+        now=NOW,
+        open_unrealized=-4.0,
+    )
+    anomaly = [a for a in report.anomalies if "reconcile" in a]
+    assert anomaly
+    assert "open marks" in anomaly[0]

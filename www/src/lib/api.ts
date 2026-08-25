@@ -55,7 +55,7 @@ export type CycleRecord = {
   nominations: Deliberation['nomination'][]
   deliberations: Deliberation[]
   turns: { role: string; model: string; text: string; tool_calls: number; evidence: string[] }[]
-  trades_placed: number
+  orders_placed: number
   cost_usd: number
   notes: string[]
 }
@@ -64,8 +64,8 @@ export type Summary = {
   cycles: number
   latest_equity: number
   llm_cost_usd: number
-  distinct_structures_traded: number
-  executed_decision_rows: number
+  distinct_structures_ordered: number
+  order_rows: number
   outcomes: { outcome: string; n: number }[]
   top_blocking_gates: { gate: string; n: number }[]
 }

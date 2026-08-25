@@ -36,8 +36,13 @@
   "vars": {
     "API_ORIGIN": "https://alpaca-agent-api.domfly.workers.dev",
     "UNIVERSE": "QQQ,SPY,IWM",
-    // Starts in dry run. Flipped to "false" on launch day, deliberately and visibly.
-    "DRY_RUN": "true",
+    // LIVE on the DEV paper account PA35CQR61R2Q (simulated funds, paper-api endpoint).
+    // Flipped 2026-08-25 to exercise the two paths that had never run: the Executor placing
+    // an order, and the exit rules seeing a real position with real spreads and overnight
+    // marks. Neither is reproducible in a backtest.
+    // ⚠️ On launch day this stays "false" but the KEYS change to the brand-new dedicated
+    // submission account. The flag is not the thing to check then — the account number is.
+    "DRY_RUN": "false",
     "MAX_TRADES": "2",
     "KILL_SWITCH": "false",
     // Soft spend caps enforced by our own code. Observed usage is ~$25/day; the structural

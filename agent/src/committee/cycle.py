@@ -105,7 +105,12 @@ class CycleRecord:
     nominations: list[dict[str, Any]] = field(default_factory=list)
     deliberations: list[dict[str, Any]] = field(default_factory=list)
     turns: list[dict[str, Any]] = field(default_factory=list)
-    trades_placed: int = 0
+    # ⚠️ ORDERS placed, not trades done. A multi-leg limit order can rest unfilled all day:
+    # the first live run reported "2 trades placed" while the broker showed zero positions
+    # and zero fills. Conflating submission with execution is exactly how a bot once
+    # reported $2,015 on a book that had made $89. Fills are established by the Auditor
+    # from broker activity, never inferred from our own order log.
+    orders_placed: int = 0
     positions_closed: int = 0
     exits: list[dict[str, Any]] = field(default_factory=list)
     cost_usd: float = 0.0
@@ -631,7 +636,7 @@ async def run_cycle(
                      for c in exec_turn.tool_calls)
         deliberation.executed = placed
         if placed:
-            record.trades_placed += 1
+            record.orders_placed += 1
             recent.append((proposal.fingerprint, proposal.expiry))
 
     record.deliberations = [asdict(d) for d in deliberations]

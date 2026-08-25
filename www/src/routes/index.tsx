@@ -278,12 +278,12 @@ function Home() {
           <Stat label="Equity" value={money(summary.latest_equity)} />
           <Stat label="Sittings" value={String(summary.cycles)} />
           <Stat
-            label="Structures traded"
-            value={`${summary.distinct_structures_traded}`}
+            label="Structures ordered"
+            value={`${summary.distinct_structures_ordered}`}
             note={
-              summary.distinct_structures_traded === summary.executed_decision_rows
-                ? `${summary.executed_decision_rows} order rows — reconciled`
-                : `⚠ ${summary.executed_decision_rows} order rows — does not reconcile`
+              summary.distinct_structures_ordered === summary.order_rows
+                ? `${summary.order_rows} order rows — reconciled`
+                : `⚠ ${summary.order_rows} order rows — does not reconcile`
             }
           />
           <Stat label="Deliberation cost" value={`$${summary.llm_cost_usd.toFixed(2)}`} />

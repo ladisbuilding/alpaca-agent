@@ -120,7 +120,8 @@ async def main() -> int:
                 print(f"        execution   : {d['execution_note'][:160]}")
     for note in record.notes:
         print(f"note: {note}")
-    print(f"\ntrades placed: {record.trades_placed}   cost: ${record.cost_usd:.2f}")
+    print(f"\norders placed: {record.orders_placed}   cost: ${record.cost_usd:.2f}")
+    print("(orders placed is NOT fills — a resting limit order is not a position)")
     cached = sum(t.get("cache_read_tokens", 0) for t in record.turns)
     total_in = sum(t.get("input_tokens", 0) for t in record.turns)
     print(f"tokens in: {total_in:,}  cache reads: {cached:,}")

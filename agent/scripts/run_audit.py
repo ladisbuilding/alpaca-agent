@@ -64,7 +64,14 @@ async def main() -> int:
     activities = rest.activities("FILL")
     decisions = executed_decisions(args.api)
 
-    report = audit(account, activities, decisions)
+    # The broker's own unrealized total, so the reconciliation can tell a legitimate open
+    # mark apart from a genuinely unexplained gap.
+    try:
+        unrealized = sum(float(p.get("unrealized_pl", 0) or 0) for p in rest.positions())
+    except Exception:  # noqa: BLE001
+        unrealized = None
+
+    report = audit(account, activities, decisions, open_unrealized=unrealized)
     print("=" * 76)
     print(format_report(report))
     print("=" * 76)

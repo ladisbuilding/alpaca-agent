@@ -59,7 +59,7 @@ app.post('/cycles', async (c) => {
       record.dry_run ? 1 : 0,
       record.market_open ? 1 : 0,
       record.equity ?? 0,
-      record.trades_placed ?? 0,
+      record.orders_placed ?? record.trades_placed ?? 0,
       record.cost_usd ?? 0,
       JSON.stringify(record)
     )
@@ -70,8 +70,12 @@ app.post('/cycles', async (c) => {
 
   const rows = (record.deliberations ?? []).map((d: any) => {
     const gate = d.final_gate ?? d.pre_gate ?? {}
+    // 'order_placed' rather than 'executed': the broker accepted a multi-leg order, which
+    // is NOT the same as a fill. A resting limit order can sit unfilled all day — the first
+    // live run submitted two and the broker showed zero positions. Fills are established by
+    // the Auditor from broker activity, never inferred from our own order log.
     let outcome = 'refused_gate'
-    if (d.executed) outcome = 'executed'
+    if (d.executed) outcome = 'order_placed'
     else if (gate.blocked_by?.includes('COMMITTEE')) outcome = 'refused_committee'
     else if (gate.approved && record.dry_run) outcome = 'dry_run'
     return c.env.DB.prepare(
@@ -157,21 +161,24 @@ app.get('/summary', async (c) => {
 
   const distinct = await c.env.DB.prepare(
     `SELECT COUNT(DISTINCT fingerprint) AS n FROM decisions
-      WHERE outcome = 'executed' AND fingerprint IS NOT NULL`
+      WHERE outcome IN ('order_placed', 'executed') AND fingerprint IS NOT NULL`
   ).first<{ n: number }>()
 
   const executedRows = await c.env.DB.prepare(
-    `SELECT COUNT(*) AS n FROM decisions WHERE outcome = 'executed'`
+    `SELECT COUNT(*) AS n FROM decisions WHERE outcome IN ('order_placed', 'executed')`
   ).first<{ n: number }>()
 
   return c.json({
     cycles: totals?.cycles ?? 0,
     latest_equity: totals?.latest_equity ?? 0,
     llm_cost_usd: Number(totals?.cost ?? 0),
-    // These two should match. When they diverge, the same structure was entered twice and
+    // These two should match. When they diverge, the same structure was ordered twice and
     // the dedup gate has a hole — surfaced rather than averaged away.
-    distinct_structures_traded: distinct?.n ?? 0,
-    executed_decision_rows: executedRows?.n ?? 0,
+    //
+    // Both count ORDERS SUBMITTED, not fills. Nothing here should ever be described as a
+    // completed trade: only the Auditor, reading broker fill activity, can say that.
+    distinct_structures_ordered: distinct?.n ?? 0,
+    order_rows: executedRows?.n ?? 0,
     outcomes: byOutcome,
     top_blocking_gates: byGate,
   })

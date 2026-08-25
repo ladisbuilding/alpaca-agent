@@ -220,7 +220,7 @@ async def one_cycle(force: bool = False, live: bool | None = None) -> dict:
         "market_open": record.market_open,
         "nominations": len(record.nominations),
         "deliberations": len(record.deliberations),
-        "trades_placed": record.trades_placed,
+        "orders_placed": record.orders_placed,
         "positions_closed": record.positions_closed,
         "exits": record.exits,
         "cost_usd": round(record.cost_usd, 4),
