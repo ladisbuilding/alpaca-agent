@@ -216,6 +216,19 @@ and tuning all still happen during the week — and all of it is postable.
 > it would have blocked every afternoon trade of the competition and the reason
 > string would have looked completely plausible
 
+**i measured my edge at $3.85. it costs $4.00 to collect it** ⭐⭐ THE POST
+> my opening-range signal has a real edge. +0.026R per trade on QQQ
+>
+> through a single ATM option that's **$3.85 per contract**
+>
+> the bid-ask on that option is 2 cents. cross it twice: **$4.00**
+>
+> so the edge is real, and it is worth fifteen cents less than the cost of taking it
+>
+> TSLA has 4x the edge. and a 26 cent spread. net -$35
+>
+> that's not bad luck. that's what an efficient market looks like up close
+
 ## Tier 2 — good. Process and judgment.
 
 **p&l is 1 of 5**

@@ -515,3 +515,47 @@ Bear ALLOW on both, final gate passed, executor reached — held only by `DRY_RU
   pressure. Two traps recorded: `DRY_RUN` is already false so **the flag tells you nothing —
   check the account number**; and the old container survives ~10 min after deploy, so **poll
   `/health` before believing a test result** or you verify the old image.
+
+### 2026-08-26 — auto-sync (2 commits)
+
+- ci: run the tests, typecheck both workers, and assert the safety invariant
+- api: the dashboard was showing peak equity as if it were current
+
+### 2026-08-26 — day-trading via SINGLE options: the edge equals the friction, to the penny
+Luke pushed back on the earlier dismissal of intraday directional trading, and he was right to —
+**I had killed it on SPREAD friction and never tested a single option.** A spread crosses TWO
+bid-asks and its mid value is small, so friction is a huge % of it. A single ATM option is ONE
+leg at ~0.50 delta with a far tighter relative spread. Completely different economics.
+
+Tested properly — ORB edge per trade, translated through a 0.50-delta option, against the REAL
+measured ATM bid-ask on the live chain:
+
+| | edge/contract | ATM friction (round trip) | net |
+|---|---|---|---|
+| QQQ | +$3.85 | $4.00 | **−$0.15** |
+| SPY | +$3.67 | $4.00 | **−$0.33** |
+| IWM | −$4.35 | $10.00 | −$14.35 |
+| TSLA | +$16.56 | $51.80 (26¢ spread!) | **−$35.24** |
+
+⭐⭐⭐ **QQQ's edge is $3.85/contract and it costs $4.00 to capture. Priced to within 15 cents.**
+Not bad luck — **that is what an efficient market looks like at close range.** TSLA has 4x the
+edge per trade and by far the worst spread, so it is the worst of the four.
+
+**Honest caveats:** assumes crossing the full spread both ways (pessimistic — a mid fill would
+halve it and make QQQ marginally positive, but our own limit orders have sat unfilled, so mid
+fills are not free either). The 0.50-delta approximation ignores gamma (helps winners) and theta
+(hurts everything held for hours). Fair summary: **a coin flip that costs you the spread.**
+
+⇒ **Five strategies tested, five negatives** — and this is the cleanest, because it does not say
+"no edge", it says **"the edge exists and equals its cost."** Far more interesting to have
+measured, and the strongest single line available for the deck, video and social.
+
+**Also today:** fixed `/summary` reporting `MAX(equity)` as `latest_equity` — the HIGH-WATER MARK
+shown as a balance ($100,026 displayed while the account held $99,973). Exactly the overstatement
+this project exists to prevent, in its own reporting code. Now the latest sitting's equity, with
+`peak_equity` alongside and the drawdown shown.
+
+**Added CI** (`.github/workflows/ci.yml`): 145 tests, both Workers typechecked, and a job that
+asserts the least-privilege invariant so a careless toolset edit fails the build rather than a
+trading morning. ⚠️ **Jobs sit QUEUED on a private repo** (Actions minutes) — flipping the repo
+public makes CI free and is due today anyway.
