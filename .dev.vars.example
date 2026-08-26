@@ -1,0 +1,9 @@
+# Copy to .dev.vars (gitignored) and fill in. Paper trading only — never a live key.
+# Alpaca paper keys: app.alpaca.markets -> paper account -> API Keys -> Generate
+ALPACA_API_KEY_ID=
+ALPACA_API_SECRET_KEY=
+ALPACA_PAPER_ENDPOINT=https://paper-api.alpaca.markets/v2
+ALPACA_DATA_ENDPOINT=https://data.alpaca.markets
+
+# console.anthropic.com. Set a spend limit on the key — the agent's own caps are soft.
+ANTHROPIC_API_KEY=

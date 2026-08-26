@@ -1,5 +1,8 @@
 .dev.vars
 .dev.vars.*
+# ...but the template must ship: the README tells people to copy it, and a public repo
+# that references a file it does not contain is a broken first step.
+!.dev.vars.example
 .env
 .env.*
 node_modules/
