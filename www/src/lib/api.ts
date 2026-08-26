@@ -63,6 +63,7 @@ export type CycleRecord = {
 export type Summary = {
   cycles: number
   latest_equity: number
+  peak_equity: number
   llm_cost_usd: number
   distinct_structures_ordered: number
   order_rows: number

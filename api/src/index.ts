@@ -143,11 +143,21 @@ app.get('/latest', async (c) => {
 app.get('/summary', async (c) => {
   const totals = await c.env.DB.prepare(
     `SELECT COUNT(*) AS cycles,
-            COALESCE(SUM(trades_placed), 0) AS trades,
-            COALESCE(SUM(cost_usd), 0) AS cost,
-            MAX(equity) AS latest_equity
+            COALESCE(SUM(cost_usd), 0) AS cost
        FROM cycles`
   ).first<any>()
+
+  // ⚠️ This was MAX(equity) — the HIGH-WATER MARK reported as if it were current. The
+  // account read $99,973 while the dashboard showed $100,026. An aggregate that only ever
+  // moves up is not a balance; it is the most flattering number in the table. Take the
+  // equity from the most recent sitting instead.
+  const latest = await c.env.DB.prepare(
+    `SELECT equity FROM cycles ORDER BY started_at DESC LIMIT 1`
+  ).first<{ equity: number }>()
+
+  const peak = await c.env.DB.prepare(
+    `SELECT MAX(equity) AS peak FROM cycles`
+  ).first<{ peak: number }>()
 
   const { results: byOutcome } = await c.env.DB.prepare(
     `SELECT outcome, COUNT(*) AS n FROM decisions GROUP BY outcome`
@@ -170,7 +180,10 @@ app.get('/summary', async (c) => {
 
   return c.json({
     cycles: totals?.cycles ?? 0,
-    latest_equity: totals?.latest_equity ?? 0,
+    latest_equity: latest?.equity ?? 0,
+    // Reported alongside, never instead of. A drawdown from the peak is information, and
+    // hiding it behind a max() is how a losing book reads as a winning one.
+    peak_equity: peak?.peak ?? 0,
     llm_cost_usd: Number(totals?.cost ?? 0),
     // These two should match. When they diverge, the same structure was ordered twice and
     // the dedup gate has a hole — surfaced rather than averaged away.

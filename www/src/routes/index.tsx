@@ -275,7 +275,15 @@ function Home() {
             padding: '1.75rem 0',
           }}
         >
-          <Stat label="Equity" value={money(summary.latest_equity)} />
+          <Stat
+            label="Equity"
+            value={money(summary.latest_equity)}
+            note={
+              summary.peak_equity > summary.latest_equity
+                ? `${money(summary.latest_equity - summary.peak_equity)} from peak`
+                : 'at the high-water mark'
+            }
+          />
           <Stat label="Sittings" value={String(summary.cycles)} />
           <Stat
             label="Structures ordered"
