@@ -1,0 +1,69 @@
+name: CI
+
+on:
+  push: { branches: [main] }
+  pull_request: { branches: [main] }
+
+jobs:
+  agent:
+    name: agent — 145 tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install
+        working-directory: agent
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest
+      - name: Test
+        working-directory: agent
+        env:
+          PYTHONPATH: src
+        # No credentials are needed and none are provided: the gates, strategy, regime,
+        # audit, exit rules and parsers are all pure functions over fixtures. Anything
+        # requiring a live key lives in scripts/, which CI deliberately does not run.
+        run: python -m pytest tests/ -q
+
+  typecheck:
+    name: api + www typecheck
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        project: [api, www]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install
+        working-directory: ${{ matrix.project }}
+        run: npm install --no-audit --no-fund
+      - name: Typecheck
+        working-directory: ${{ matrix.project }}
+        run: npx tsc --noEmit
+
+  invariant:
+    name: only one role may trade
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - name: Assert the least-privilege invariant
+        working-directory: agent
+        env:
+          PYTHONPATH: src
+        # roles.py asserts at import time that exactly one role holds the `trading`
+        # toolset. This job exists so a careless edit to a toolset string fails the build
+        # rather than a trading morning — the safety claim in the README is only as good
+        # as the thing that keeps it true.
+        run: |
+          python -c "
+          from committee.roles import ALL_ROLES
+          traders = {r.name for r in ALL_ROLES if r.can_trade}
+          assert traders == {'executor'}, f'expected only executor, got {traders}'
+          print(f'OK — {len(ALL_ROLES)} roles, only {traders} may place an order')
+          "
