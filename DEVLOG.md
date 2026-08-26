@@ -608,3 +608,28 @@ researched strategies never mined. Directly relevant to a 5-day options window:
 - **Earnings IV ramp** — buy the straddle 7–14d before earnings, sell before the print; profits
   from the IV ramp, never holds through the announcement. Few earnings in the window though.
 - **PEAD** — noted as *"non-existent since 2006"* for large-cap US. Skip.
+
+### 2026-08-26 (later) — regime detector rewritten; the income sleeve is trading again
+Rewrote `regime.py` to measure at the horizon actually traded. **The deciding statistic is now
+the BREACH RATE, not a ratio of volatilities**: an ATM implied move is ≈1σ, so fair pricing is
+exceeded ~32% of the time. Fewer breaches ⇒ sellers overpaid; more ⇒ buyers overpaid. Unlike an
+IV/RV ratio this compares like with like — a move the market priced, against moves that actually
+happened, over **the same number of days**.
+- `MarketSnapshot` now carries daily closes and `atm_iv(underlying, expiry)`; `regime()` takes
+  the expiry being traded, so a price from one horizon can never be tested against moves from
+  another. That was the whole bug.
+- Guardrails: `MIN_WINDOWS=25` (a breach rate over a handful of windows is noise, and reporting
+  noise as a verdict is how a measurement error becomes a position); missing inputs ⇒ UNKNOWN,
+  never a guess. **148 tests.**
+- Test fixtures build closes so a KNOWN fraction of windows breach — constructed, not simulated,
+  because the breach rate is the statistic under test.
+
+✅ **Live result, immediately:** the premium scout nominated again for the first time since
+Monday, citing the corrected statistic in its own words — *"SPY — income — 1DTE implied move
+1.09% vs. actual exceedance only 17% (fair ~32%)... premium is genuinely rich."*
+**An IWM iron condor was APPROVED, the Bear said ALLOW, and it FILLED** (4-leg mleg at a credit).
+A SPY condor filled too. 16 legs, 16 fills. The other nominations were correctly blocked by
+CONCENTRATION and DUPLICATE.
+
+⇒ **The agent is now selling premium exactly where the edge was measured to be.** Full arc:
+measurement error → detected → corrected → trading the real edge.

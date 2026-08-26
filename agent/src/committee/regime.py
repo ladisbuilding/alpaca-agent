@@ -1,41 +1,51 @@
-"""Which edge exists today.
+"""Which edge exists today — measured at the horizon actually traded.
 
-Deterministic, no model in the loop — the same rule as the gates and the audit. The
-committee's job is to argue about *candidates*; deciding whether the strategy's premise even
-holds is arithmetic, and arithmetic should not be negotiable.
+Deterministic, no model in the loop, same rule as the gates and the audit. Whether the
+strategy's premise holds is arithmetic, and arithmetic should not be negotiable.
 
-The measurement that matters for an options book is **IV/RV**: implied volatility on the
-strikes we would actually trade, against realized volatility over a fixed window.
+⚠️ **This module was wrong once, and the way it was wrong is worth keeping written down.**
 
-  IV/RV > 1.30   premium is rich       → SELL premium (condors, credit verticals)
-  1.10–1.30      no clear edge          → stand down, or take only high-conviction directional
-  IV/RV < 1.10   premium is cheap      → BUY premium (debit verticals, calendars)
+The first version compared *annualised* implied volatility against *30-day* realised
+volatility. That is a fair test for a multi-week structure. It is the wrong test for the
+2-DTE structures this agent actually trades, and it produced a confident, false conclusion:
+"no premium edge anywhere". The committee then correctly refused every trade for two days.
 
-⚠️ Both inputs have to be measured honestly or this is worse than nothing:
+Measured at the horizon actually traded, the picture inverted:
 
-* **IV must come from tradable strikes only.** A chain-wide median is polluted by deep-ITM
-  strikes trading 1–13 contracts, which inflated SPY's apparent IV to 22–24% when the strikes
-  we would sell priced at 13–16%. Scouts nominated on a "3x IV/RV" premise that did not exist
-  and the Bear killed all five live debates on exactly that point.
-* **RV must use a fixed window.** A scout allowed to choose its own lookback will choose a
-  flattering one: a live nomination cited 0.47%/day from a 10-session window when the
-  30-session figure was 0.78%/day.
+    IWM 2DTE   implied move 1.47x actual sigma   breached 11% of windows
+    SPY 2DTE   implied move 1.25x actual sigma   breached 22%
+    QQQ 2DTE   implied move 0.96x actual sigma   breached 30%   <- fairly priced
 
-Measured 2026-08-25 with both fixed: SPY 1.19x, QQQ 1.04x, IWM 1.23x. No variance premium
-anywhere — which is why an agent that refused everything was reading the market correctly.
+And QQQ — the one genuinely fairly priced — was what the scouts kept nominating.
+
+**The statistic that decides is the BREACH RATE.** An at-the-money implied move is
+approximately a one-sigma move, so if options were fairly priced roughly 32% of periods
+would exceed it. Fewer breaches than that means sellers are being overpaid; more means
+buyers are. Unlike a ratio of volatilities, this compares like with like: a move the market
+priced against moves that actually happened, over the same number of days.
+
+⚠️ Honest limits, since this has been wrong in both directions:
+* Windows overlap, so they are not independent observations.
+* It reads one current IV snapshot, not a historical implied series.
+* A low breach rate does not prove positive expectancy — losses can exceed wins per event.
+  `THIN_CREDIT` is what tests whether the credit actually pays for the risk, and it stays.
 """
 
 from __future__ import annotations
 
+import statistics
 from dataclasses import dataclass
 from enum import Enum
+from typing import Sequence
 
-# Selling premium needs to be paid for the tail. Below this the credit does not compensate
-# for the risk of the move actually happening, because implied is barely above realized.
-RICH_ABOVE = 1.30
-# Below this, options are cheap relative to how much the underlying actually moves, which is
-# the condition long premium and calendars are designed for.
-CHEAP_BELOW = 1.10
+# A 1-sigma move is exceeded ~31.7% of the time under a normal distribution. Real returns
+# are fat-tailed, which if anything pushes the fair breach rate slightly higher — so a rate
+# well BELOW this is the conservative direction to call a seller edge.
+FAIR_BREACH = 0.32
+SELLER_EDGE_BELOW = 0.25
+BUYER_EDGE_ABOVE = 0.40
+# Below this many windows the breach rate is noise, not a measurement.
+MIN_WINDOWS = 25
 
 
 class Regime(str, Enum):
@@ -49,13 +59,20 @@ class Regime(str, Enum):
 class RegimeRead:
     underlying: str
     regime: Regime
-    iv: float | None
-    realized: float | None
-    ratio: float | None
+    dte: int | None = None
+    implied_move: float | None = None
+    actual_sigma: float | None = None
+    breach_rate: float | None = None
+    windows: int = 0
+
+    @property
+    def ratio(self) -> float | None:
+        if not self.implied_move or not self.actual_sigma:
+            return None
+        return self.implied_move / self.actual_sigma
 
     @property
     def sleeve(self) -> str:
-        """Which sleeve the scouts should hunt in."""
         return {
             Regime.PREMIUM_RICH: "income",
             Regime.PREMIUM_CHEAP: "long_premium",
@@ -64,33 +81,67 @@ class RegimeRead:
         }[self.regime]
 
     def explain(self) -> str:
-        if self.ratio is None:
-            return f"{self.underlying}: regime unknown (IV or realized vol unavailable)"
+        if self.regime is Regime.UNKNOWN or self.breach_rate is None:
+            return f"{self.underlying}: regime unknown (insufficient data)"
         base = (
-            f"{self.underlying}: IV {self.iv:.1%} vs realized {self.realized:.1%} "
-            f"= {self.ratio:.2f}x"
+            f"{self.underlying} at {self.dte}DTE: the market prices a {self.implied_move:.2%} move; "
+            f"the underlying actually exceeded that in {self.breach_rate:.0%} of "
+            f"{self.windows} windows (fair value ~{FAIR_BREACH:.0%})"
         )
         if self.regime is Regime.PREMIUM_RICH:
-            return f"{base} — premium is RICH. Selling defined-risk premium is justified."
+            return (
+                f"{base} — premium is RICH. Sellers are being paid more than the underlying "
+                "delivers. Defined-risk premium selling is justified here."
+            )
         if self.regime is Regime.PREMIUM_CHEAP:
             return (
-                f"{base} — premium is CHEAP. Selling it is not paid for; buy premium instead "
-                "(debit verticals, calendars)."
+                f"{base} — premium is CHEAP. The underlying moves further than the market "
+                "prices. Buy premium (debit verticals, calendars) rather than sell it."
             )
         return (
-            f"{base} — NO CLEAR EDGE either way. Selling is not paid for and buying is not "
-            "obviously cheap. Standing down is the correct default."
+            f"{base} — FAIRLY PRICED. Neither side is being overpaid, so neither selling nor "
+            "buying premium has an edge here. Standing down is the correct default."
         )
 
 
-def classify(iv: float | None, realized: float | None, underlying: str = "?") -> RegimeRead:
-    if not iv or not realized or realized <= 0:
-        return RegimeRead(underlying, Regime.UNKNOWN, iv, realized, None)
-    ratio = iv / realized
-    if ratio > RICH_ABOVE:
+def classify(
+    underlying: str,
+    atm_iv: float | None,
+    dte: int | None,
+    closes: Sequence[float],
+) -> RegimeRead:
+    """Is short-dated premium rich, cheap, or fair on this underlying right now?
+
+    `atm_iv` is the at-the-money implied vol on the expiry being traded and `dte` its days to
+    expiry — both must describe the SAME structure, or this compares a price from one horizon
+    against moves from another, which is the error this module was written to fix.
+    """
+    if not atm_iv or not dte or dte <= 0 or len(closes) < MIN_WINDOWS + dte:
+        return RegimeRead(underlying, Regime.UNKNOWN)
+
+    implied_move = atm_iv * (dte / 252) ** 0.5
+
+    # Actual moves over the SAME number of sessions the option has left to live.
+    returns = [(closes[i] - closes[i - dte]) / closes[i - dte] for i in range(dte, len(closes))]
+    if len(returns) < MIN_WINDOWS:
+        return RegimeRead(underlying, Regime.UNKNOWN)
+
+    sigma = statistics.pstdev(returns)
+    breach = sum(1 for r in returns if abs(r) > implied_move) / len(returns)
+
+    if breach < SELLER_EDGE_BELOW:
         regime = Regime.PREMIUM_RICH
-    elif ratio < CHEAP_BELOW:
+    elif breach > BUYER_EDGE_ABOVE:
         regime = Regime.PREMIUM_CHEAP
     else:
         regime = Regime.NO_EDGE
-    return RegimeRead(underlying, regime, iv, realized, ratio)
+
+    return RegimeRead(
+        underlying=underlying,
+        regime=regime,
+        dte=dte,
+        implied_move=implied_move,
+        actual_sigma=sigma,
+        breach_rate=breach,
+        windows=len(returns),
+    )

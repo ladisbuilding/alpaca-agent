@@ -229,6 +229,30 @@ and tuning all still happen during the week — and all of it is postable.
 >
 > that's not bad luck. that's what an efficient market looks like up close
 
+**i was measuring my own edge at the wrong horizon** ⭐⭐ THE POST
+> my agent stood down for two days. "no premium edge anywhere"
+>
+> it was right about the number and i'd given it the wrong number
+>
+> i compared annualised IV to 30-DAY realised vol. correct for a monthly structure.
+> useless for the 2-day ones i actually trade
+>
+> measured properly: IWM prices a 1.1% move. the underlying exceeds it 22% of the time.
+> fair value is 32%
+>
+> the edge was there the whole time. my ruler was the wrong length
+
+**an implied move is a 1-sigma move**
+> stopped comparing volatility numbers. started counting
+>
+> the market prices a move. how often does the underlying actually exceed it?
+>
+> should be ~32% if it's fair. IWM: 11%. SPY: 22%. QQQ: 30%
+>
+> two of those are sellers getting overpaid. one is fairly priced
+>
+> and QQQ — the fair one — is what my scouts kept nominating
+
 ## Tier 2 — good. Process and judgment.
 
 **p&l is 1 of 5**

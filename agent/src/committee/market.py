@@ -149,6 +149,9 @@ class MarketSnapshot:
     chains: dict[str, tuple[Contract, ...]] = field(default_factory=dict)
     spot: dict[str, float] = field(default_factory=dict)
     realized: dict[str, float] = field(default_factory=dict)  # annualised, 30 sessions
+    # Daily closes per underlying. The regime read needs the actual move distribution over
+    # the SAME number of sessions the option has left — a summary statistic cannot give that.
+    closes: dict[str, tuple[float, ...]] = field(default_factory=dict)
 
     @property
     def today(self) -> date:
@@ -171,9 +174,30 @@ class MarketSnapshot:
         )
         return ivs[len(ivs) // 2] if ivs else None
 
-    def regime(self, underlying: str) -> RegimeRead:
+    def atm_iv(self, underlying: str, expiry: date) -> float | None:
+        """At-the-money implied vol on ONE expiry. Must be the expiry actually being traded:
+        pricing one horizon against moves from another is the error this replaced."""
+        atm = [
+            c
+            for c in self.chain(underlying)
+            if c.expiry == expiry and c.delta and 0.40 <= abs(c.delta) <= 0.60
+            and c.implied_volatility and c.bid > 0
+        ]
+        if not atm:
+            return None
+        nearest = min(atm, key=lambda c: abs(abs(c.delta) - 0.50))
+        return nearest.implied_volatility
+
+    def regime(self, underlying: str, expiry: date | None = None) -> RegimeRead:
+        """Regime for the expiry actually being traded. Without one, the nearest tradable
+        expiry is used — which is what the income sleeve would reach for anyway."""
         u = underlying.upper()
-        return classify(self.median_tradable_iv(u), self.realized.get(u), u)
+        if expiry is None:
+            candidates = sorted({c.expiry for c in self.chain(u) if c.expiry > self.today})
+            if not candidates:
+                return classify(u, None, None, ())
+            expiry = candidates[0]
+        return classify(u, self.atm_iv(u, expiry), (expiry - self.today).days, self.closes.get(u, ()))
 
     def describe(self, underlying: str) -> str:
         """Compact, model-readable summary of one underlying.
@@ -218,10 +242,16 @@ class MarketSnapshot:
                 continue
             ivs = sorted(c.implied_volatility for c in tradable)  # type: ignore[misc]
             median = ivs[len(ivs) // 2]
-            ratio = f", IV/RV {median / rv:.2f}x" if rv else ""
+            read = self.regime(underlying, e)
+            verdict = ""
+            if read.breach_rate is not None:
+                verdict = (
+                    f" | implied {read.implied_move:.2%} move, actually exceeded "
+                    f"{read.breach_rate:.0%} of the time (fair ~32%) -> {read.regime.value}"
+                )
             lines.append(
                 f"  {e}: {len(tradable)} tradable strikes (8-45 delta), "
-                f"IV {ivs[0]:.1%}-{ivs[-1]:.1%} median {median:.1%}{ratio}"
+                f"IV {ivs[0]:.1%}-{ivs[-1]:.1%} median {median:.1%}{verdict}"
             )
         return "\n".join(lines)
 
@@ -288,6 +318,7 @@ def take_snapshot(rest: AlpacaRest, underlyings: list[str]) -> MarketSnapshot:
     chains: dict[str, tuple[Contract, ...]] = {}
     spot: dict[str, float] = {}
     realized: dict[str, float] = {}
+    closes_by_symbol: dict[str, tuple[float, ...]] = {}
     for u in underlyings:
         u = u.upper()
         # Two windows, merged: the nearest contracts for income and a calendar's near leg,
@@ -317,7 +348,8 @@ def take_snapshot(rest: AlpacaRest, underlyings: list[str]) -> MarketSnapshot:
         except Exception as exc:  # noqa: BLE001 — spot is nice to have, not required
             print(f"  !! {u} spot unavailable: {type(exc).__name__}: {exc}")
         try:
-            closes = [float(b["c"]) for b in rest.daily_bars(u, sessions=40) if b.get("c")]
+            closes = [float(b["c"]) for b in rest.daily_bars(u, sessions=70) if b.get("c")]
+            closes_by_symbol[u] = tuple(closes)
             rv = realized_vol(closes)
             if rv:
                 realized[u] = rv
@@ -337,4 +369,5 @@ def take_snapshot(rest: AlpacaRest, underlyings: list[str]) -> MarketSnapshot:
         chains=chains,
         spot=spot,
         realized=realized,
+        closes=closes_by_symbol,
     )

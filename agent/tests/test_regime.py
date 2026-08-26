@@ -12,52 +12,114 @@ import pytest
 from committee.chain import Contract, LiquidityFilter
 from committee.gates import Right, Side, evaluate, has_uncovered_short
 from committee.market import realized_vol
-from committee.regime import CHEAP_BELOW, RICH_ABOVE, Regime, classify
 from committee.strategy import CalendarConfig, build_calendar
+from committee.regime import (
+    BUYER_EDGE_ABOVE,
+    FAIR_BREACH,
+    MIN_WINDOWS,
+    SELLER_EDGE_BELOW,
+    Regime,
+    classify,
+)
+
 
 NEAR = date(2026, 8, 27)
 FAR = date(2026, 9, 3)
 
 
-# ── regime ─────────────────────────────────────────────────────────────────────────
+# ── regime, measured at the horizon actually traded ────────────────────────────────
+#
+# This module was wrong once: it compared ANNUALISED IV against 30-DAY realised vol, which
+# is the right test for a multi-week structure and the wrong one for a 2-DTE structure. It
+# reported "no premium edge anywhere" and the committee correctly refused everything for two
+# days. These tests pin the corrected behaviour.
 
 
-def test_rich_premium_says_sell():
-    r = classify(0.30, 0.20, "XYZ")
+def closes_where(pct_of_windows_move: float, move: float, dte: int = 2, n: int = 90) -> list[float]:
+    """Build closes so that a KNOWN fraction of `dte`-session windows move more than `move`.
+
+    Constructed rather than simulated: the breach rate is the statistic under test, so it
+    must be known by construction, not assumed from a plausible-looking price path.
+    """
+    big = int(n * pct_of_windows_move)
+    out = [100.0]
+    for i in range(n):
+        # A big move every k-th step; everything else is flat, so exactly the windows
+        # containing a big move breach.
+        step = move * 1.5 if (big and i % max(int(n / big), 1) == 0) else 0.0
+        out.append(out[-1] * (1 + step))
+    return out
+
+
+def test_an_implied_move_the_underlying_rarely_reaches_is_a_seller_edge():
+    """IWM's live read: a 1.11% implied move exceeded only 22% of the time against a fair
+    value near 32%."""
+    # implied 2-day move at 40% IV ≈ 3.6%; build a tape that exceeds it ~10% of windows
+    r = classify("IWM", atm_iv=0.40, dte=2, closes=closes_where(0.05, 0.036))
     assert r.regime is Regime.PREMIUM_RICH
     assert r.sleeve == "income"
+    assert r.breach_rate < SELLER_EDGE_BELOW
     assert "RICH" in r.explain()
 
 
-def test_cheap_premium_says_buy():
-    """The live QQQ read: IV 22.8% vs realized 21.6% = 1.06x."""
-    r = classify(0.228, 0.216, "QQQ")
+def test_an_implied_move_the_underlying_routinely_exceeds_is_a_buyer_edge():
+    # implied 2-day move at 5% IV ≈ 0.45%; a tape that clears it most windows
+    r = classify("XYZ", atm_iv=0.05, dte=2, closes=closes_where(0.60, 0.005))
     assert r.regime is Regime.PREMIUM_CHEAP
     assert r.sleeve == "long_premium"
-    assert "calendars" in r.explain()
+    assert r.breach_rate > BUYER_EDGE_ABOVE
+    assert "CHEAP" in r.explain()
 
 
-def test_the_middle_says_stand_down():
-    """The live SPY read: 1.20x. Not paid to sell, not obviously cheap to buy."""
-    r = classify(0.146, 0.122, "SPY")
+def test_a_fairly_priced_market_stands_down():
+    """QQQ's live read: breached 31% against a fair value of ~32%. Neither side is overpaid,
+    so neither selling nor buying has an edge."""
+    # implied 1-day move at 25.6% IV ≈ 1.6%; a tape that clears it about a third of the time
+    r = classify("QQQ", atm_iv=0.256, dte=1, closes=closes_where(0.32, 0.016, dte=1))
     assert r.regime is Regime.NO_EDGE
     assert r.sleeve == "none"
-    assert "NO CLEAR EDGE" in r.explain()
+    assert "FAIRLY PRICED" in r.explain()
 
 
-@pytest.mark.parametrize("iv,rv", [(None, 0.2), (0.2, None), (0.2, 0.0)])
-def test_missing_inputs_are_unknown_not_a_guess(iv, rv):
-    """A missing input must never resolve to a tradeable verdict — a broken realized-vol
-    call once made every underlying read 'unknown', which looked like a market condition
-    rather than a bug."""
-    r = classify(iv, rv, "X")
+def test_the_dte_used_for_the_implied_move_must_match_the_windows_measured():
+    """The whole point of the rewrite. The same IV read at 2 DTE and at 20 DTE implies very
+    different moves, and each must be compared against moves over ITS OWN horizon."""
+    closes = closes_where(0.2, 0.01)
+    short = classify("X", atm_iv=0.20, dte=2, closes=closes)
+    long = classify("X", atm_iv=0.20, dte=20, closes=closes)
+    assert short.implied_move < long.implied_move
+    assert short.dte == 2 and long.dte == 20
+
+
+def test_a_low_breach_rate_on_too_few_windows_is_unknown_not_an_edge():
+    """A breach rate over a handful of windows is noise. Reporting it as a tradeable verdict
+    is how a measurement error becomes a position."""
+    r = classify("X", atm_iv=0.20, dte=2, closes=closes_where(0.1, 0.01, n=10))
     assert r.regime is Regime.UNKNOWN
     assert r.sleeve == "none"
 
 
-def test_thresholds_are_exclusive_at_the_boundary():
-    assert classify(RICH_ABOVE * 0.2, 0.2).regime is Regime.NO_EDGE  # exactly 1.30 is not rich
-    assert classify(CHEAP_BELOW * 0.2, 0.2).regime is Regime.NO_EDGE  # exactly 1.10 is not cheap
+@pytest.mark.parametrize(
+    "iv,dte,closes",
+    [
+        (None, 2, closes_where(0.1, 0.01)),
+        (0.2, None, closes_where(0.1, 0.01)),
+        (0.2, 0, closes_where(0.1, 0.01)),
+        (0.2, 2, []),
+    ],
+)
+def test_missing_inputs_are_unknown_not_a_guess(iv, dte, closes):
+    r = classify("X", iv, dte, closes)
+    assert r.regime is Regime.UNKNOWN
+    assert r.sleeve == "none"
+
+
+def test_the_read_reports_its_own_sample_size():
+    """Every verdict carries how many windows it rests on, so a reader can judge it."""
+    r = classify("X", atm_iv=0.20, dte=2, closes=closes_where(0.1, 0.01))
+    assert r.windows >= MIN_WINDOWS
+    assert str(r.windows) in r.explain()
+    assert f"{FAIR_BREACH:.0%}" in r.explain()
 
 
 # ── realized vol ───────────────────────────────────────────────────────────────────
