@@ -47,6 +47,7 @@ from .roles import (
     Role,
 )
 from .regime import Regime
+from .screener import Candidate, buyable, sellable
 from .switches import Switches
 from .strategy import (
     CalendarConfig,
@@ -332,6 +333,7 @@ async def _scout(
     universe: list[str],
     record: CycleRecord,
     sleeve: str,
+    candidates: list[Candidate] | None = None,
 ) -> list[Nomination]:
     context = "\n".join(snapshot.describe(u) for u in universe)
     reads = [snapshot.regime(u) for u in universe]
@@ -359,7 +361,23 @@ async def _scout(
             if buyable
             else ""
         )
-        + "\nNominate from this universe only, and only where the regime supports your sleeve. "
+        + (
+            "\nSCREENED CANDIDATES — measured across the most active and most-moved names, "
+            "filtered to those whose option chains are actually tradeable, ranked by edge:\n"
+            + "\n".join(f"  {c.describe()}" for c in (candidates or [])[:8])
+            + "\n"
+            if candidates
+            else ""
+        )
+        + (
+            "\nYou also have get_news, get_market_movers and get_most_active_stocks. Use them "
+            "when a catalyst would change your read — a name that has already moved on news "
+            "prices differently from one that has not.\n"
+            if sleeve == "directional"
+            else ""
+        )
+        + "\nNominate from the universe or the screened candidates, and only where the regime "
+        "supports your sleeve. "
         "One nomination per line, starting with the ticker. Returning nothing is correct and "
         "common — a regime with no edge deserves no nominations."
     )
@@ -395,6 +413,7 @@ async def run_cycle(
     broker_positions: list[dict[str, Any]] | None = None,
     manage_config: ManageConfig | None = None,
     switches: Switches | None = None,
+    candidates: list[Candidate] | None = None,
 ) -> CycleRecord:
     """`max_cycle_usd` stops a single sitting that turns pathological. An observed debating
     cycle costs ~$2; the structural worst case is ~$11. This runs unattended, so it must be
@@ -491,8 +510,10 @@ async def run_cycle(
 
     # ── 1. Scouts nominate (concurrently — they are independent by design) ─────────
     premium, direction = await asyncio.gather(
-        _scout(client, SCOUT_PREMIUM, creds, snapshot, universe, record, "income"),
-        _scout(client, SCOUT_DIRECTIONAL, creds, snapshot, universe, record, "directional"),
+        _scout(client, SCOUT_PREMIUM, creds, snapshot, universe, record, "income",
+               candidates=candidates),
+        _scout(client, SCOUT_DIRECTIONAL, creds, snapshot, universe, record, "directional",
+               candidates=candidates),
     )
     nominations = premium + direction
     nominations.sort(key=lambda n: -n.conviction)

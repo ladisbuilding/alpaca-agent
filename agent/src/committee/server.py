@@ -22,6 +22,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from .cycle import run_cycle
 from .market import AlpacaRest, take_snapshot
 from .mcp_client import McpCredentials
+from .screener import screen
 from .switches import Switches
 
 PORT = int(os.environ.get("PORT", "8080"))
@@ -165,6 +166,16 @@ def recent_fingerprints(api: str | None) -> list[tuple[str, date]]:
     return out
 
 
+def _screen_safely(rest, today, seeds):
+    """Screening is an enhancement, not a dependency. If it fails the cycle still runs on
+    the seed universe rather than standing down because a screener endpoint had a bad day."""
+    try:
+        return screen(rest, today, seeds=seeds)
+    except Exception as exc:  # noqa: BLE001
+        print(f"  !! screener failed, falling back to seeds: {type(exc).__name__}: {exc}")
+        return []
+
+
 async def one_cycle(force: bool = False, live: bool | None = None) -> dict:
     env = env_config()
     rest = AlpacaRest(env)
@@ -212,6 +223,7 @@ async def one_cycle(force: bool = False, live: bool | None = None) -> dict:
         max_cycle_usd=MAX_CYCLE_USD,
         open_decisions=open_decisions(api),
         broker_positions=broker_positions,
+        candidates=_screen_safely(rest, snapshot.today, universe),
         switches=Switches.parse(
             os.environ.get("STRATEGY_MODES"),
             global_kill=os.environ.get("KILL_SWITCH", "false").lower() == "true",

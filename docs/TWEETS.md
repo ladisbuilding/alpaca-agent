@@ -253,6 +253,29 @@ and tuning all still happen during the week — and all of it is postable.
 >
 > and QQQ — the fair one — is what my scouts kept nominating
 
+**my screener's first pick was a trap** ⭐⭐
+> gave my agent a real market screener instead of three tickers i'd hardcoded
+>
+> first run it ranked NVDA the richest premium in the market. breach rate 0%. implied
+> 2-day move 8.8%
+>
+> NVDA reported earnings that afternoon
+>
+> a backward-looking statistic cannot see a scheduled event. it wasn't rich premium,
+> it was the market pricing a known unknown
+>
+> now: implied detaching >2.5x from realised DISQUALIFIES instead of ranking first
+
+**my scouts had never once scouted**
+> asked why my agent traded QQQ/SPY/IWM. answer: because i typed them into a config on day one
+>
+> then i checked the logs. the premium scout made ZERO tool calls
+>
+> it had get_market_movers, get_most_active_stocks and get_news the whole time
+>
+> a screener sitting in the toolbox, never opened, while the agent was capped at my
+> first guess
+
 ## Tier 2 — good. Process and judgment.
 
 **p&l is 1 of 5**

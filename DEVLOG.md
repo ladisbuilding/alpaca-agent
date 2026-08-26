@@ -633,3 +633,37 @@ CONCENTRATION and DUPLICATE.
 
 ⇒ **The agent is now selling premium exactly where the edge was measured to be.** Full arc:
 measurement error → detected → corrected → trading the real edge.
+
+### 2026-08-26 (cont.) — the scouts never scouted; universe was hardcoded
+Luke: *"how is it that you are picking these tickers? have you heard of warrior trading? it trades
+based on the news."* Both halves landed.
+
+⚠️ **The universe was three tickers I hardcoded on day one** (`UNIVERSE: "QQQ,SPY,IWM"`). The
+"scouts" chose among my guesses — and measured live, **the premium scout made ZERO tool calls in a
+cycle.** `get_market_movers`, `get_most_active_stocks` and `get_news` had **never been called
+once.** A market screener sat in the toolbox unopened while the agent was capped at my day-one
+assumption. The regime read says IWM is rich at 1.47x; whether something else sat at 1.8x was
+never asked.
+
+**On Warrior Trading (Ross Cameron — small-cap momentum, gap scanners, low float, news catalyst,
+first hour):** the *catalyst principle* transfers; **the instrument does not.** A low-float runner
+has wide, thin or absent weeklies — we already measured TSLA's 26¢ ATM spread destroying a real
+edge, and a small cap is far worse. So: keep the catalyst idea, apply it where options actually
+trade.
+
+**Built `screener.py`** — deterministic. Pulls most-actives + movers, **rejects on option quality
+BEFORE measuring edge** (≥8 tradable strikes in the 8–45 delta band, ATM spread ≤6%), runs the
+regime read on each, ranks by **breach rate**. Seeds are always included so a known-good universe
+never vanishes because a screener endpoint had a bad morning. Screening failure is non-fatal.
+
+⭐⭐⭐ **Its FIRST live run found a trap: it ranked NVDA best in the market — breach rate 0%,
+implied 2-day move 8.88% — on the afternoon NVDA reported earnings.** A backward-looking breach
+rate cannot see a scheduled binary. Selling that is picking up pennies in front of exactly the
+tail the Bear spends its turns warning about.
+⇒ **EVENT GUARD added:** the vol risk premium is a *modest, persistent* overpricing (1.2–1.6x).
+When implied detaches far beyond that, the market **knows** something history cannot see. An
+extreme ratio now **disqualifies** rather than ranking first. NVDA is rejected with a stated
+reason. **159 tests**, incl. a fixture that verifies its own breach rate rather than being trusted.
+
+✅ **Directional scout now uses `get_market_movers`, `get_most_active_stocks`, `get_news`** — 4
+tool calls in the first live cycle, against 0 before.
