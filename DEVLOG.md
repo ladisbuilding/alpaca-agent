@@ -559,3 +559,52 @@ this project exists to prevent, in its own reporting code. Now the latest sittin
 asserts the least-privilege invariant so a careless toolset edit fails the build rather than a
 trading morning. ⚠️ **Jobs sit QUEUED on a private repo** (Actions minutes) — flipping the repo
 public makes CI free and is due today anyway.
+
+### 2026-08-26 (research) — the regime detector was measuring at the WRONG HORIZON
+Luke asked for a bigger research push: the brain, the web, competitors, past contests, outside
+the box. It produced one finding that overturns Monday's conclusion.
+
+⭐⭐⭐ **"No premium edge anywhere" was a MEASUREMENT ERROR.** I compared annualised IV against
+**30-day** realised vol. Correct for a multi-week structure; **wrong for the 2-DTE structures we
+actually trade.** Measured at the horizon actually traded — implied move over the structure's own
+life, against how often the underlying really moved that far:
+
+| | implied/actual σ | breached | fair ~32% | verdict |
+|---|---|---|---|---|
+| **IWM** 2DTE | **1.47x** | **11%** | | **STRONG seller edge** |
+| **SPY** 2DTE | **1.25x** | **22%** | | seller edge |
+| QQQ 2DTE | 0.96x | 30% | | fairly priced |
+
+An ATM implied move ≈ 1σ, so fair pricing breaches ~32% of the time. **IWM breached 11%.**
+⚠️ **And QQQ — the one that IS fairly priced — is what the scouts kept nominating and the
+committee kept correctly refusing. The edge was in IWM all along and the detector could not see
+it.**
+
+**Caveats stated, having now been wrong in both directions:** 64 OVERLAPPING windows is not a
+large independent sample; this is one IV snapshot, not a historical series; and a low breach rate
+does not prove positive expectancy — losses can exceed wins per event. `THIN_CREDIT` still tests
+that and stays.
+
+**Competitor / judge intel (lablab page, re-read):**
+- ⚠️ **Enrolment 2,534**, up from 2,080 on Monday.
+- ⭐⭐ **JUDGES NAMED — three of five build the API:** Tony Lee (**Chief Brokerage Officer**),
+  Brandon Meyerowitz (**Team Lead, Trading API**), Grace Gao (**PM**), Pawel Czech (lablab CEO),
+  Chiranjeev Shah (**Technical Content Marketing**).
+  ⇒ A Chief Brokerage Officer thinks about **risk and compliance** all day — deterministic gates,
+  defined-risk-only and an agent that refuses is *his native language*. A content-marketing judge
+  is looking for something **publishable** (Alpaca blogged about a community project, "Agent M").
+  **Our honest-measurement narrative is exactly what both would want.**
+- Public teams (AgentTrade AI, Team Scorpians, AgentAlpha, ALIENS, Stormers, Bagholders, quasar,
+  Jetpack): descriptions are generic — "analyze markets, execute paper trades". **None mentions
+  OPTIONS**, which is a CORE REQUIREMENT. Scorpians is the technically ambitious one (AMD GPUs,
+  RL + transformer forecasting, live dashboard).
+
+**Brain research — `archived-projects/stock-trader/research/unconventional-strategies.md`** is 25
+researched strategies never mined. Directly relevant to a 5-day options window:
+- ⭐ **0DTE breakeven iron condor** — documented parameters: 5–15 delta both sides, enter ~10:15
+  ET, **Monday and Wednesday outperform**, close at 15% profit / −25% stop / 12:00 ET.
+- ⭐ **Max Pain / OPEX pinning** — dealer hedging pins price near max pain; strongest in the final
+  2–3 days before expiry. **Sep 4 (submission day) is a Friday weekly expiry.**
+- **Earnings IV ramp** — buy the straddle 7–14d before earnings, sell before the print; profits
+  from the IV ramp, never holds through the announcement. Few earnings in the window though.
+- **PEAD** — noted as *"non-existent since 2006"* for large-cap US. Skip.
