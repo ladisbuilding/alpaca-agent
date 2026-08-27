@@ -169,10 +169,20 @@ def test_verify_defined_risk_returns_none_for_unverifiable_shape():
 
 
 def test_trade_larger_than_per_trade_cap_is_blocked():
-    big = condor(qty=3)  # $1,140 max loss vs the $1,000 cap on $100k
-    result = evaluate(big, healthy_portfolio(), CONFIG, NOW)
+    """Sized from the config so raising the cap cannot silently disarm the test that guards
+    it — a trade just over the allowance, whatever the allowance currently is."""
+    cap = CONFIG.max_loss_per_trade_pct * 100_000
+    qty = int(cap // (5.0 * CONTRACT_SIZE - 120.0)) + 1
+    result = evaluate(condor(qty=qty), healthy_portfolio(), CONFIG, NOW)
     assert not result.approved
     assert "TRADE_TOO_LARGE" in result.blocked_by
+
+
+def test_a_trade_just_inside_the_per_trade_cap_is_allowed():
+    cap = CONFIG.max_loss_per_trade_pct * 100_000
+    qty = max(int(cap // (5.0 * CONTRACT_SIZE - 120.0)), 1)
+    result = evaluate(condor(qty=qty), healthy_portfolio(), CONFIG, NOW)
+    assert "TRADE_TOO_LARGE" not in result.blocked_by
 
 
 def test_same_trade_passes_when_equity_supports_it():
@@ -380,8 +390,9 @@ def test_insufficient_buying_power_is_blocked():
 def test_all_blocking_reasons_are_collected_not_just_the_first():
     """The decision log should show every rule a proposal broke. Short-circuiting would
     hide the second and third reasons and make refusals look narrower than they are."""
+    oversized = int((CONFIG.max_loss_per_trade_pct * 100_000) // (5.0 * CONTRACT_SIZE - 120.0)) + 2
     result = evaluate(
-        condor(qty=5),
+        condor(qty=oversized),
         healthy_portfolio(realized_pnl_today=-5_000.0, buying_power=100.0),
         CONFIG,
         NOW,
