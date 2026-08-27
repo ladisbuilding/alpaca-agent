@@ -435,3 +435,43 @@ def test_verdict_defaults_to_allow_when_absent():
     """Under the deploy-and-manage mandate, silence is not a refusal — a missing verdict
     should not silently block a trade the committee never rejected."""
     assert read_verdict("I have no strong view here.") == "ALLOW"
+
+
+# ── sizing to the risk budget ──────────────────────────────────────────────────────
+
+from committee.strategy import size_for_risk  # noqa: E402
+
+
+def test_sizing_scales_a_structure_to_the_risk_budget():
+    """Both winning condors made $21 and $12 — not because the edge was small, but because
+    qty=1 with $5 wings caps max profit near $60 while using $400 of a $1,000 allowance."""
+    chain = synthetic_chain()
+    one = build_iron_condor(chain, EXPIRY, IncomeConfig(qty=1))
+    sized = size_for_risk(
+        lambda q: build_iron_condor(chain, EXPIRY, IncomeConfig(qty=q)), risk_budget=one.max_loss * 3
+    )
+    assert sized.legs[0].qty == 3
+    assert sized.max_loss == pytest.approx(one.max_loss * 3, rel=0.01)
+    assert sized.max_profit > one.max_profit
+
+
+def test_sizing_never_goes_below_one_contract():
+    """A budget too small for even one contract returns the single-contract structure — the
+    gates then refuse it, which is where that decision belongs."""
+    chain = synthetic_chain()
+    sized = size_for_risk(lambda q: build_iron_condor(chain, EXPIRY, IncomeConfig(qty=q)), risk_budget=1.0)
+    assert sized.legs[0].qty == 1
+
+
+def test_sizing_respects_a_hard_quantity_ceiling():
+    chain = synthetic_chain()
+    sized = size_for_risk(
+        lambda q: build_iron_condor(chain, EXPIRY, IncomeConfig(qty=q)),
+        risk_budget=1_000_000.0,
+        max_qty=4,
+    )
+    assert sized.legs[0].qty == 4
+
+
+def test_sizing_passes_an_unbuildable_structure_through_as_none():
+    assert size_for_risk(lambda q: None, risk_budget=1000.0) is None

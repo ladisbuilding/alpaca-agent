@@ -24,7 +24,7 @@ from __future__ import annotations
 import asyncio
 import json
 import re
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from datetime import date, datetime
 from typing import Any, Sequence
 
@@ -51,6 +51,7 @@ from .screener import Candidate, buyable, sellable
 from .switches import Switches
 from .strategy import (
     CalendarConfig,
+    size_for_risk,
     DirectionalConfig,
     IncomeConfig,
     build_calendar,
@@ -281,7 +282,11 @@ def parse_nominations(
 
 
 def build_for(
-    nom: Nomination, snapshot: MarketSnapshot, income: IncomeConfig, directional: DirectionalConfig
+    nom: Nomination,
+    snapshot: MarketSnapshot,
+    income: IncomeConfig,
+    directional: DirectionalConfig,
+    risk_budget: float = 0.0,
 ) -> Proposal | None:
     """Deterministic construction. The scout chose the symbol and the stance; every strike
     below comes from code reading the live chain."""
@@ -297,12 +302,20 @@ def build_for(
         return None
     expiry = expiries[0]
 
+    def sized(builder):
+        """Scale to the risk budget; the gates remain the ceiling."""
+        if risk_budget <= 0:
+            return builder(income.qty)
+        return size_for_risk(builder, risk_budget)
+
     if nom.sleeve == "income":
         if nom.direction == "bullish":
-            return build_credit_vertical(chain, expiry, Right.PUT, income, liquidity)
+            return sized(lambda q: build_credit_vertical(
+                chain, expiry, Right.PUT, replace(income, qty=q), liquidity))
         if nom.direction == "bearish":
-            return build_credit_vertical(chain, expiry, Right.CALL, income, liquidity)
-        return build_iron_condor(chain, expiry, income, liquidity)
+            return sized(lambda q: build_credit_vertical(
+                chain, expiry, Right.CALL, replace(income, qty=q), liquidity))
+        return sized(lambda q: build_iron_condor(chain, expiry, replace(income, qty=q), liquidity))
 
     if nom.sleeve == "long_premium":
         # Directionless view in a cheap-premium regime → calendar. With a direction, a debit
@@ -319,7 +332,8 @@ def build_for(
                         return built
             return None
         right = Right.PUT if nom.direction == "bearish" else Right.CALL
-        return build_debit_vertical(chain, expiry, right, directional, liquidity)
+        return sized(lambda q: build_debit_vertical(
+            chain, expiry, right, replace(directional, qty=q), liquidity))
 
     right = Right.PUT if nom.direction == "bearish" else Right.CALL
     return build_debit_vertical(chain, expiry, right, directional, liquidity)
@@ -515,6 +529,20 @@ async def run_cycle(
         _scout(client, SCOUT_DIRECTIONAL, creds, snapshot, universe, record, "directional",
                candidates=candidates),
     )
+    # ⚠️ Directional trades require a CATALYST, not a narrative. Every losing trade so far was
+    # a story ("QQQ fell 6 of 7 sessions") that the Bear dismantled; the premium sleeve, which
+    # trades a measured edge, is the one that made money. A resolved binary or a >3% day move
+    # is a checkable input — a chart description is not.
+    catalyst_names = {c.symbol.upper() for c in (candidates or []) if c.event_flagged or (c.day_move is not None and abs(c.day_move) >= 0.03)}
+    if candidates:
+        before = len(direction)
+        direction = [n for n in direction if n.underlying.upper() in catalyst_names]
+        if before != len(direction):
+            record.notes.append(
+                f"Dropped {before - len(direction)} directional nomination(s) with no catalyst. "
+                f"Catalysts today: {', '.join(sorted(catalyst_names)) or 'none'}."
+            )
+
     nominations = premium + direction
     nominations.sort(key=lambda n: -n.conviction)
     record.nominations = [asdict(n) for n in nominations]
@@ -527,7 +555,10 @@ async def run_cycle(
     deliberations: list[Deliberation] = []
     built: list[tuple[Deliberation, Proposal]] = []  # carried forward, never rebuilt
     for nom in nominations:
-        proposal = build_for(nom, snapshot, income, directional)
+        proposal = build_for(
+            nom, snapshot, income, directional,
+            risk_budget=snapshot.portfolio.equity * risk.max_loss_per_trade_pct * 0.80,
+        )
         if proposal is None:
             deliberations.append(
                 Deliberation(

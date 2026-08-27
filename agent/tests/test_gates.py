@@ -220,18 +220,30 @@ def test_portfolio_risk_cap_allows_the_same_trade_on_an_emptier_book():
 
 
 def test_too_many_positions_is_blocked():
+    """Derived from the config, not hardcoded — otherwise raising a cap silently breaks the
+    test that guards it, which is the opposite of what a guard is for."""
     existing = tuple(
-        OpenPosition(f"SYM{i}", "iron_condor", f"fp{i}", 10.0, EXPIRY) for i in range(8)
+        OpenPosition(f"SYM{i}", "iron_condor", f"fp{i}", 10.0, EXPIRY)
+        for i in range(CONFIG.max_concurrent_positions)
     )
     result = evaluate(condor(), healthy_portfolio(open_positions=existing), CONFIG, NOW)
     assert not result.approved
     assert "TOO_MANY_POSITIONS" in result.blocked_by
 
 
-def test_concentration_blocks_third_position_in_same_underlying():
-    existing = (
-        OpenPosition("QQQ", "iron_condor", "a", 100.0, EXPIRY),
-        OpenPosition("QQQ", "put_credit_spread", "b", 100.0, EXPIRY),
+def test_one_below_the_position_cap_still_trades():
+    existing = tuple(
+        OpenPosition(f"SYM{i}", "iron_condor", f"fp{i}", 10.0, EXPIRY)
+        for i in range(CONFIG.max_concurrent_positions - 1)
+    )
+    result = evaluate(condor(), healthy_portfolio(open_positions=existing), CONFIG, NOW)
+    assert "TOO_MANY_POSITIONS" not in result.blocked_by
+
+
+def test_concentration_blocks_once_the_per_underlying_cap_is_reached():
+    existing = tuple(
+        OpenPosition("QQQ", "iron_condor", f"fp{i}", 100.0, EXPIRY)
+        for i in range(CONFIG.max_positions_per_underlying)
     )
     result = evaluate(condor(underlying="QQQ"), healthy_portfolio(open_positions=existing), CONFIG, NOW)
     assert not result.approved
@@ -239,9 +251,9 @@ def test_concentration_blocks_third_position_in_same_underlying():
 
 
 def test_concentration_allows_a_different_underlying():
-    existing = (
-        OpenPosition("QQQ", "iron_condor", "a", 100.0, EXPIRY),
-        OpenPosition("QQQ", "put_credit_spread", "b", 100.0, EXPIRY),
+    existing = tuple(
+        OpenPosition("QQQ", "iron_condor", f"fp{i}", 100.0, EXPIRY)
+        for i in range(CONFIG.max_positions_per_underlying)
     )
     result = evaluate(condor(underlying="SPY"), healthy_portfolio(open_positions=existing), CONFIG, NOW)
     assert "CONCENTRATION" not in result.blocked_by

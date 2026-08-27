@@ -113,10 +113,22 @@ class RiskConfig:
     """Hard limits. Deliberately conservative — see docs/ARCHITECTURE.md on why a
     reliably-green book beats a headline number when P&L is one of five judged criteria."""
 
-    max_loss_per_trade_pct: float = 0.01  # 1% of equity
+    # Raised from 1%. The measured edge in premium selling is roughly (implied/actual - 1)
+    # x credit — about $15 a trade at one contract, which is what the two closed condors
+    # actually returned (+$21, +$12). The edge is real; the POSITION was a rounding error.
+    # At 2% the same structure sizes to ~3 contracts, so 20 trades over the week is ~$900
+    # rather than ~$300. Max loss on any single trade stays capped at 2% of equity, and the
+    # 10% portfolio cap still binds the total regardless of how many trades pass this one.
+    max_loss_per_trade_pct: float = 0.02
     max_deployed_risk_pct: float = 0.10  # 10% of equity at risk across all open positions
-    max_concurrent_positions: int = 8
-    max_positions_per_underlying: int = 2
+    # CONCENTRATION was the top blocking gate by a distance — 36 refusals — because the
+    # universe was three hardcoded names against a cap of two positions each. That is a
+    # SIX-position ceiling on a book allowed eight, so the agent spent most cycles unable to
+    # act at all. The screener now finds more names, so the caps can breathe without
+    # concentrating risk: the per-underlying limit is what controls correlation, and the
+    # portfolio risk cap still binds the total regardless.
+    max_concurrent_positions: int = 12
+    max_positions_per_underlying: int = 3
     daily_loss_limit_pct: float = 0.03  # halt for the day after -3%
     min_credit_to_max_loss: float = 0.10  # reject credit spreads paying < 10% of risk
     max_bid_ask_pct: float = 0.15  # refuse to cross a spread wider than 15% of mid

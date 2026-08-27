@@ -303,3 +303,33 @@ def build_calendar(
         net_credit=-debit,
         bid_ask_pct=_structure_spread_pct([near, far], far.mid - near.mid),
     )
+
+
+def size_for_risk(
+    build,
+    risk_budget: float,
+    *,
+    max_qty: int = 10,
+) -> Proposal | None:
+    """Scale a structure to the risk budget instead of trading a hardcoded quantity.
+
+    Both winning condors so far made $21 and $12 — not because the edge was small, but
+    because `qty=1` with $5 wings caps max profit near $60 and we were using $400 of a $1,000
+    per-trade allowance. The measured edge was fine; the position was a rounding error.
+
+    `build` is a callable taking qty and returning a Proposal (or None). A defined-risk
+    structure's max loss is linear in quantity — (width x 100 - credit) x qty — so the size is
+    solved at qty=1 and applied directly rather than searched for.
+
+    The deterministic gates remain the ceiling: TRADE_TOO_LARGE, PORTFOLIO_RISK_CAP and
+    INSUFFICIENT_BUYING_POWER all re-check the result. This decides intent; they decide what
+    is permitted.
+    """
+    one = build(1)
+    if one is None or one.max_loss <= 0:
+        return one
+
+    qty = int(risk_budget // one.max_loss)
+    if qty <= 1:
+        return one  # the budget does not stretch past a single contract
+    return build(min(qty, max_qty)) or one
