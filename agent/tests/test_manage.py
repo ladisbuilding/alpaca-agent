@@ -213,3 +213,43 @@ def test_a_malformed_expiry_is_skipped_rather_than_crashing_the_cycle():
     bad = executed_condor()
     bad["structure"]["expiry"] = "not-a-date"
     assert held_positions([broker_leg("A", -10.0)], [bad]) == []
+
+
+def test_a_structure_ordered_twice_produces_ONE_managed_position():
+    """We ordered the same IWM condor several times over a week. Each executed decision record
+    produced its own HeldPosition, so one real structure generated THREE exit decisions: the
+    first close consumed the legs and the next two hunted for positions that no longer existed.
+
+    Same duplicate-counting failure the audit layer exists to catch — here in the code that
+    manages risk."""
+    legs = [broker_leg(s, -12.5) for s in ("A", "B", "C", "D")]
+    reordered = [executed_condor(), executed_condor(), executed_condor()]
+    held = held_positions(legs, reordered)
+    assert len(held) == 1, f"one structure, one position — got {len(held)}"
+
+
+def test_two_genuinely_different_structures_are_both_managed():
+    """Pairs with the test above: dedup must key on identity, not collapse everything."""
+    other = executed_condor()
+    other["structure"]["fingerprint"] = "fp2"
+    other["structure"]["legs"] = [{"symbol": s, "side": "sell", "strike": 1.0} for s in ("E", "F")]
+    legs = [broker_leg(s, -10.0) for s in ("A", "B", "C", "D", "E", "F")]
+    held = held_positions(legs, [executed_condor(), other])
+    assert len(held) == 2
+
+
+def test_legs_are_claimed_by_only_one_position():
+    """Two decision records whose legs OVERLAP must not both claim them — otherwise the book
+    reads larger than it is, and the second exit closes something already gone."""
+    overlapping = executed_condor()
+    overlapping["structure"]["fingerprint"] = "fp-different"
+    held = held_positions([broker_leg(s, -10.0) for s in ("A", "B")], [executed_condor(), overlapping])
+    assert len(held) == 1
+
+
+def test_a_partially_closed_structure_is_labelled_partial():
+    """A structure missing legs is no longer what was risk-assessed, and the exit reason should
+    say so rather than pretending it is intact."""
+    held = held_positions([broker_leg("A", -40.0), broker_leg("B", 5.0)], [executed_condor()])
+    assert len(held) == 1
+    assert "partial" in held[0].strategy

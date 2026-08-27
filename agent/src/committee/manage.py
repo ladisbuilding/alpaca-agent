@@ -205,15 +205,39 @@ def held_positions(
     """
     by_symbol: dict[str, dict] = {p.get("symbol", ""): p for p in broker_positions}
     out: list[HeldPosition] = []
+    # ⚠️ Legs may be claimed by only ONE position. The same structure gets ordered more than
+    # once over a week, so several executed decision records point at the same broker legs.
+    # Without this, one real condor produced THREE exit decisions: the first close consumed
+    # the legs and the next two went hunting for positions that no longer existed, which the
+    # Executor correctly refused to improvise around.
+    #
+    # This is the same duplicate-counting failure the audit layer exists to catch — here in
+    # the code that manages risk, where it is worse: a phantom exit is noise, but a phantom
+    # POSITION would make the book look larger than it is.
+    claimed: set[str] = set()
+    seen_fingerprints: set[str] = set()
 
     for d in executed_decisions:
         s = d.get("structure") or {}
         legs = s.get("legs") or []
         if not legs:
             continue
-        live = [by_symbol[l["symbol"]] for l in legs if l.get("symbol") in by_symbol]
+        fingerprint = s.get("fingerprint", "")
+        if fingerprint and fingerprint in seen_fingerprints:
+            continue  # a re-order of a structure already accounted for
+
+        symbols = [str(l.get("symbol")) for l in legs if l.get("symbol")]
+        live = [by_symbol[sym] for sym in symbols if sym in by_symbol and sym not in claimed]
         if not live:
-            continue  # already closed or expired — nothing to manage
+            continue  # already closed, expired, or its legs belong to another position
+
+        claimed.update(sym for sym in symbols if sym in by_symbol)
+        if fingerprint:
+            seen_fingerprints.add(fingerprint)
+
+        # A structure missing some of its legs is no longer the thing we risk-assessed. Flag
+        # it in the strategy name so the exit reason says so rather than pretending otherwise.
+        partial = len(live) < len(symbols)
 
         # Net market value across the legs. Negative on a credit structure (we are net
         # short), so the cost to close is its magnitude.
@@ -229,7 +253,7 @@ def held_positions(
             HeldPosition(
                 fingerprint=s.get("fingerprint", ""),
                 underlying=s.get("underlying", "?"),
-                strategy=d.get("strategy", "unknown"),
+                strategy=(d.get("strategy", "unknown") + ("(partial)" if partial else "")),
                 expiry=expiry,
                 entry_credit=credit,
                 max_profit=float(s.get("max_profit", 0) or 0),
