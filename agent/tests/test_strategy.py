@@ -475,3 +475,27 @@ def test_sizing_respects_a_hard_quantity_ceiling():
 
 def test_sizing_passes_an_unbuildable_structure_through_as_none():
     assert size_for_risk(lambda q: None, risk_budget=1000.0) is None
+
+
+def test_screened_candidates_are_valid_nomination_targets():
+    """The ticker filter exists to reject parse artifacts — a caveat line once became a ticker
+    called NOTE. Validating against the SEED universe alone turned it into a second, invisible
+    universe cap, and it discarded a directional nomination for NVDA on a +9% post-earnings
+    catalyst simply because NVDA was not one of three hardcoded seeds."""
+    text = "NVDA | directional | bullish | post-earnings gap +7.7% with PT hikes | conviction 2"
+    seeds_only = parse_nominations(text, "scout_directional", "directional", ["QQQ", "SPY", "IWM"])
+    assert seeds_only == [], "the seed-only list is what discarded it"
+
+    with_screened = parse_nominations(
+        text, "scout_directional", "directional", ["QQQ", "SPY", "IWM", "NVDA"]
+    )
+    assert [n.underlying for n in with_screened] == ["NVDA"]
+    assert with_screened[0].direction == "bullish"
+    assert with_screened[0].conviction == 2
+
+
+def test_the_artifact_guard_still_bites_with_a_wider_list():
+    """Widening the allowed list must not reopen the hole it was closing."""
+    text = "NVDA: bullish catalyst.\nNote: this is a caveat, not a pick.\n"
+    noms = parse_nominations(text, "scout_directional", "directional", ["NVDA", "SPY"])
+    assert [n.underlying for n in noms] == ["NVDA"]

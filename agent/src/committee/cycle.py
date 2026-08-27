@@ -349,6 +349,15 @@ async def _scout(
     sleeve: str,
     candidates: list[Candidate] | None = None,
 ) -> list[Nomination]:
+    # ⚠️ Nominations are validated against this list. It must include the SCREENED candidates,
+    # not just the seed universe — the ticker filter exists to reject parse artifacts (a
+    # caveat line once became a ticker called NOTE), and validating against the seeds alone
+    # turns it into a second, invisible universe cap.
+    #
+    # It cost us the best setup of the week: the directional scout nominated NVDA on a
+    # +9% post-earnings catalyst, with price-target hikes cited and conviction correctly
+    # sized down — and the parser discarded it because NVDA was not one of my three seeds.
+    allowed = list(dict.fromkeys(list(universe) + [c.symbol for c in (candidates or [])]))
     context = "\n".join(snapshot.describe(u) for u in universe)
     reads = [snapshot.regime(u) for u in universe]
     verdicts = "\n".join(f"  {r.explain()}" for r in reads)
@@ -405,7 +414,7 @@ async def _scout(
     if turn.error:
         record.notes.append(f"{role.name} errored: {turn.error}")
         return []
-    return parse_nominations(turn.text, role.name, sleeve, universe)
+    return parse_nominations(turn.text, role.name, sleeve, allowed)
 
 
 async def run_cycle(

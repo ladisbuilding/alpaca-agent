@@ -16,7 +16,7 @@ import os
 import sys
 import traceback
 import urllib.request
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 from .cycle import run_cycle
@@ -181,6 +181,10 @@ async def one_cycle(force: bool = False, live: bool | None = None) -> dict:
     rest = AlpacaRest(env)
     universe = [u.strip().upper() for u in os.environ.get("UNIVERSE", "QQQ,SPY,IWM").split(",") if u.strip()]
 
+    # Screen FIRST, then snapshot the union — a candidate the scouts cannot see the chain for
+    # is a candidate they cannot nominate.
+    screened = _screen_safely(rest, datetime.now(timezone.utc).date(), universe)
+    universe = list(dict.fromkeys(universe + [c.symbol for c in screened]))[:6]
     snapshot = take_snapshot(rest, universe)
 
     # A cron firing outside market hours must not spend money on scouts. The gates would
@@ -223,7 +227,7 @@ async def one_cycle(force: bool = False, live: bool | None = None) -> dict:
         max_cycle_usd=MAX_CYCLE_USD,
         open_decisions=open_decisions(api),
         broker_positions=broker_positions,
-        candidates=_screen_safely(rest, snapshot.today, universe),
+        candidates=screened,
         switches=Switches.parse(
             os.environ.get("STRATEGY_MODES"),
             global_kill=os.environ.get("KILL_SWITCH", "false").lower() == "true",
