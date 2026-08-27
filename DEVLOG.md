@@ -667,3 +667,7 @@ reason. **159 tests**, incl. a fixture that verifies its own breach rate rather 
 
 ✅ **Directional scout now uses `get_market_movers`, `get_most_active_stocks`, `get_news`** — 4
 tool calls in the first live cycle, against 0 before.
+
+### 2026-08-27 — auto-sync (1 commits)
+
+- manage: one structure, one managed position — exits were duplicating

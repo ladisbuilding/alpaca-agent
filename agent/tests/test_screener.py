@@ -148,3 +148,46 @@ def test_a_candidate_describes_its_own_evidence():
     the ranking rather than trust it."""
     text = candidate("SPY", 0.19).describe()
     assert "SPY" in text and "strikes" in text and "%" in text
+
+
+def test_every_expiry_in_the_window_is_tried_not_just_the_nearest():
+    """A 1-DTE chain on a single stock is sparse in the 8-45 delta band — strikes are spread
+    wide because the implied move is large. Testing only the nearest expiry rejected NVDA on
+    the day it moved +9.4% post-earnings: 7 tradable strikes against a minimum of 8, on one of
+    the most liquid chains in the market. Its next expiry was dense."""
+    near, far = EXPIRY, EXPIRY + timedelta(days=7)
+    sparse = [c for c in chain(strikes=20) if abs(c.delta) > 0.42][:4]  # too few, near expiry
+    dense = [
+        Contract(c.symbol + "F", c.underlying, far, c.right, c.strike, c.bid, c.ask, c.delta,
+                 c.implied_volatility)
+        for c in chain(strikes=20)
+    ]
+    near_usable, _ = _chain_quality(sparse, near)
+    far_usable, _ = _chain_quality(dense, far)
+    assert near_usable < MIN_TRADABLE_STRIKES, "the nearest expiry must genuinely fail"
+    assert far_usable >= MIN_TRADABLE_STRIKES, "and a later one must pass, or this proves nothing"
+
+
+def test_event_flagged_names_are_not_sellable_but_are_catalysts():
+    """Getting this split wrong cost the best setup of the week: the first version rejected the
+    name from the SCREENER entirely, so the directional scout never saw NVDA the day it moved
+    +9.4%. 'Do not sell this' is not 'do not look at this'."""
+    from committee.screener import catalysts
+
+    c = candidate("NVDA", breach=0.02)
+    flagged = Candidate(c.symbol, c.regime, c.tradable_strikes, c.atm_spread_pct, c.expiry,
+                        "most active", event_flagged=True, day_move=0.094)
+    assert not flagged.sellable, "event premium is never sellable"
+    assert flagged in catalysts([flagged]), "but it IS a directional candidate"
+    assert "EVENT" in flagged.describe()
+    assert "Directional interest only" in flagged.describe()
+
+
+def test_a_big_day_move_is_a_catalyst_even_without_an_event_flag():
+    from committee.screener import catalysts
+
+    c = candidate("INTC", breach=0.30)
+    mover = Candidate(c.symbol, c.regime, 10, 0.02, EXPIRY, "most active", False, 0.033)
+    quiet = Candidate("SPY", c.regime, 16, 0.01, EXPIRY, "seed", False, 0.004)
+    picked = catalysts([mover, quiet])
+    assert [x.symbol for x in picked] == ["INTC"]

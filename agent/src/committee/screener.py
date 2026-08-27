@@ -47,8 +47,15 @@ MIN_DTE, MAX_DTE = 1, 12
 # cannot see a scheduled binary, and selling into one is picking up pennies in front of exactly
 # the tail the Bear spends its turns warning about.
 #
-# So an extreme ratio is a DISQUALIFIER, not a strong buy signal. The screener rejects it
-# rather than ranking it first.
+# ⚠️⚠️ BUT the guard is SLEEVE-SPECIFIC, and getting that wrong cost us the best setup of the
+# week. The first version rejected the name from the SCREENER entirely, so the directional
+# scout never saw it either — conflating "do not SELL this" with "do not LOOK at this".
+#
+# NVDA reported on 26 Aug and closed +9.42% the next day. The guard was right that its
+# premium was untouchable, and wrong to hide the name: a resolved binary is precisely where
+# DIRECTIONAL opportunity lives, which is the whole post-earnings-drift idea.
+#
+# So an event flag now DISQUALIFIES THE INCOME SLEEVE and FLAGS THE DIRECTIONAL ONE.
 EVENT_PREMIUM_RATIO = 2.5
 
 
@@ -60,6 +67,15 @@ class Candidate:
     atm_spread_pct: float
     expiry: date | None
     reason: str  # why it surfaced: volume, mover, or seed
+    # An implied move far beyond anything the underlying has done means a binary is priced
+    # in — or has just resolved. Untouchable for premium selling, interesting for direction.
+    event_flagged: bool = False
+    day_move: float | None = None
+
+    @property
+    def sellable(self) -> bool:
+        """Event premium is never sellable, however rich the backward-looking read says."""
+        return self.regime.regime is Regime.PREMIUM_RICH and not self.event_flagged
 
     @property
     def rank_key(self) -> float:
@@ -73,8 +89,15 @@ class Candidate:
         return breach + self.atm_spread_pct
 
     def describe(self) -> str:
+        move = f", moved {self.day_move:+.1%} today" if self.day_move is not None else ""
+        if self.event_flagged:
+            return (
+                f"{self.symbol} ({self.reason}{move}): EVENT — implied move is "
+                f"{self.regime.ratio:.1f}x anything it has actually done. NOT sellable at any "
+                f"price; a resolved or imminent binary. Directional interest only."
+            )
         return (
-            f"{self.symbol} ({self.reason}): {self.tradable_strikes} tradable strikes, "
+            f"{self.symbol} ({self.reason}{move}): {self.tradable_strikes} tradable strikes, "
             f"ATM spread {self.atm_spread_pct:.1%} — {self.regime.explain()}"
         )
 
@@ -144,12 +167,25 @@ def screen(
         expiries = sorted({c.expiry for c in chain if c.expiry > today})
         if not expiries:
             continue
-        expiry = expiries[0]
 
-        strikes, spread = _chain_quality(chain, expiry)
+        # Try EVERY expiry in the window, not just the nearest. A 1-DTE chain on a single
+        # stock is naturally sparse in the 8-45 delta band — the strikes are spread wide
+        # because the implied move is large — so testing only expiries[0] rejects names whose
+        # next expiry is perfectly liquid.
+        #
+        # This cost us NVDA on the day it moved +9.4% post-earnings: 7 tradable strikes at
+        # 1 DTE against a minimum of 8. Missed by one strike, on one of the most liquid
+        # options chains in the market.
+        expiry = None
+        strikes = spread = 0.0
+        for candidate_expiry in expiries:
+            st, sp = _chain_quality(chain, candidate_expiry)
+            if st >= MIN_TRADABLE_STRIKES and sp <= MAX_ATM_SPREAD_PCT:
+                expiry, strikes, spread = candidate_expiry, st, sp
+                break
         # Reject on option quality BEFORE measuring edge: an edge you cannot trade at a
         # sane price is not an edge, and measuring it just invites someone to act on it.
-        if strikes < MIN_TRADABLE_STRIKES or spread > MAX_ATM_SPREAD_PCT:
+        if expiry is None:
             continue
 
         atm = [c for c in chain if c.expiry == expiry and c.delta and 0.40 <= abs(c.delta) <= 0.60 and c.implied_volatility]
@@ -169,21 +205,35 @@ def screen(
         # Reject event premium. The cheapest reliable tell that a binary is coming is that
         # implied has detached from anything the underlying has actually done.
         ratio = read.ratio
-        if ratio is not None and ratio > EVENT_PREMIUM_RATIO:
-            print(
-                f"  -- {sym} rejected: implied {read.implied_move:.1%} is {ratio:.1f}x its own "
-                f"realised move. That is an event premium, not a risk premium."
-            )
-            continue
+        flagged = ratio is not None and ratio > EVENT_PREMIUM_RATIO
 
-        out.append(Candidate(sym, read, strikes, spread, expiry, reason))
+        day_move = None
+        if len(closes) >= 2 and closes[-2]:
+            day_move = (closes[-1] - closes[-2]) / closes[-2]
+
+        out.append(Candidate(sym, read, strikes, spread, expiry, reason, flagged, day_move))
 
     out.sort(key=lambda c: c.rank_key)
     return out
 
 
 def sellable(candidates: Sequence[Candidate]) -> list[Candidate]:
-    return [c for c in candidates if c.regime.regime is Regime.PREMIUM_RICH]
+    """Premium worth selling — never an event, however rich the historical read looks."""
+    return [c for c in candidates if c.sellable]
+
+
+def catalysts(candidates: Sequence[Candidate], min_move: float = 0.03) -> list[Candidate]:
+    """Names where something actually happened: an event premium, or a large day move.
+
+    This is the list the DIRECTIONAL scout wants. Our losing trades so far were narrative
+    guesses ("QQQ fell 6 of 7 sessions"); a resolved binary with a 9% move is a different
+    kind of input, and the Bear dismantles the first kind every time.
+    """
+    return [
+        c
+        for c in candidates
+        if c.event_flagged or (c.day_move is not None and abs(c.day_move) >= min_move)
+    ]
 
 
 def buyable(candidates: Sequence[Candidate]) -> list[Candidate]:
