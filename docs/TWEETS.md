@@ -276,6 +276,29 @@ and tuning all still happen during the week — and all of it is postable.
 > a screener sitting in the toolbox, never opened, while the agent was capped at my
 > first guess
 
+**twelve tests, one winner, and that is the problem** ⭐⭐
+> tested four technical signals out of sample. one cleared costs
+>
+> which should make you suspicious, not excited. twelve tests, one hit at p<0.05 is
+> exactly what noise produces
+>
+> so i tested it across 12 symbols instead of one. pooled t = 1.79. below the bar
+>
+> but it works on IWM, EEM, TLT and dies on QQQ, XLK, MSFT. small caps, emerging,
+> bonds — where the arbitrage is thin. flat where it isn't
+>
+> noise doesn't usually sort itself that neatly. suggestive, not proven
+
+**the overnight anomaly decayed**
+> "nearly all market gains happen overnight." documented t-stat ~17. the grandmother
+> of all anomalies
+>
+> tested it on the last 140 sessions: +0.08% a night, 58% hit rate... t = 1.04
+>
+> real direction, no significance left
+>
+> its own source warned it deteriorated after 2010. it did
+
 ## Tier 2 — good. Process and judgment.
 
 **p&l is 1 of 5**

@@ -671,3 +671,39 @@ tool calls in the first live cycle, against 0 before.
 ### 2026-08-27 — auto-sync (1 commits)
 
 - manage: one structure, one managed position — exits were duplicating
+
+### 2026-08-27 — technical signals: falsified four, one survives with caveats
+Luke asked whether the system takes any strategy. **Honest answer: structures yes, signals no.**
+A new options STRUCTURE is one function (`chain -> Proposal`) and everything downstream works —
+gates, sizing and exits are all structure-agnostic. But `build_for()` is a hardcoded if/elif over
+21 sleeve-name references, and a `Nomination` carries only `(underlying, sleeve, direction,
+conviction)` — **a technical signal saying "enter 294.50, stop 292, target 297" has no way to
+carry those levels.** Also worth stating plainly: **`orb.py` is imported NOWHERE in the live
+path.** A complete TA implementation, backtested, never connected — because its edge ($3.85/
+contract) was worth less than the cost of collecting it ($4.00).
+
+**Built `scripts/test_signals.py`** — falsifies a signal in ~10 minutes using the test that
+killed ORB: measure on data postdating the idea, translate through a 0.50-delta option, charge
+the REAL measured ATM spread twice.
+
+| signal | result |
+|---|---|
+| gap fade | **negative everywhere.** Dead |
+| intraday (open→close) | positive but t<0.7, edge < friction |
+| overnight (close→open) | +0.06–0.08%, hit 55–58%, **but t≈1.0** — the archive claimed t≈17 historically, so **the anomaly has decayed**, exactly as its own source warned |
+| RSI(2) reversion | the only one that clears friction |
+
+⚠️ **One pass out of twelve tests is what multiple testing produces on its own** — the same
+failure family as the "best of 288 sweep" criticised in the archived research. So it was tested
+for breadth rather than believed:
+
+**RSI(2) across 12 symbols:** significant on **TLT (t=2.22), IWM (t=2.17), EEM (t=2.14)**; flat
+on QQQ/XLK/XLF/MSFT. **Pooled n=925, mean +0.09%, t=+1.79 — BELOW the conventional bar.**
+⇒ **Suggestive, not established.** But the pattern is economically coherent rather than random:
+it survives in small caps, emerging markets and bonds, and dies in the most heavily arbitraged
+mega-cap tech. And it clears the friction bar by an order of magnitude — **IWM +$47/contract
+against $8 friction**, where ORB was +$3.85 against $4.00.
+
+⇒ Correct next step is to let the COMMITTEE argue it, with the multiple-testing objection stated
+in the brief. The Bear's job is exactly that attack; surviving it is better validation than my
+assertion.
