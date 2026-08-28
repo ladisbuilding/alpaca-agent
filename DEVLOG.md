@@ -707,3 +707,49 @@ against $8 friction**, where ORB was +$3.85 against $4.00.
 ⇒ Correct next step is to let the COMMITTEE argue it, with the multiple-testing objection stated
 in the brief. The Bear's job is exactly that attack; surviving it is better validation than my
 assertion.
+
+### 2026-08-28 — Ross Cameron gap-and-go: the first signal with a real, robust edge
+Tested market-wide and survivorship-free. **`scripts/test_gap_and_go.py`.**
+
+My earlier note in `screener.py` argued small-cap momentum "does not transfer to an options
+book" — thin, wide, often non-existent weeklies. Still true, but it only rules out trading
+gappers **through options.** As **shares** it is a different question, and two things make it
+live: options must be *part* of the strategy not all of it, and **at $100k PDT does not apply**
+— the exact blocker that stopped the archived ORB work.
+
+**Method.** Universe = all ~11k active US equities **plus ~2k INACTIVE ones** (a small-cap
+backtest built only from survivors is biased up by precisely the pump-and-dumps that later
+delisted). **SIP, not IEX** — a low-float runner is invisible in a 2% fragment of the tape;
+we have SIP. Filters: gap ≥10%, price $1–20, dollar volume ≥$10M, rvol ≥5. Setup: 5-min
+opening range, enter the break, stop at range low, 2:1 target, stop assumed to resolve first
+when a bar spans both. **1,372 gapper-days, 1,008 triggered.**
+
+| slippage | n | win% | mean R | t |
+|---|---|---|---|---|
+| 0.00% | 1008 | 44% | +0.205R | **+4.89** |
+| 0.25% | 1008 | 42% | +0.126R | **+3.04** |
+| 0.50% | 1008 | 41% | +0.064R | +1.56 |
+| 1.00% | 1008 | 38% | −0.053R | −1.33 |
+
+⇒ **Break-even slippage ≈0.6–0.7%.** Survivorship check: the 15 delisted setups return
+**+0.119R at 0.25%** vs +0.126R for survivors — indistinguishable, so the bias is NOT driving
+it. **Only ONE parameter set was tested, once** — no sweep, so no multiple-testing discount.
+The 41% win rate is what a 2:1 target produces, not a defect.
+
+⚠️ **The optimistic assumption is the STOP FILL** — modelled at the stop price plus entry-level
+slippage. Real stops on a reversing gapper slip far worse, so **the true break-even is BELOW
+0.6%.** Treat it as a ceiling. LULD halts unmodelled entirely.
+
+**Comparison:** ORB edge $3.85 = friction $4.00. RSI(2) pooled t=1.79. This is t=+3.04 after
+a survivorship correction. **It is the only thing tested that clears its costs with room.**
+
+⇒ **NOT shipping it before kickoff.** Three blockers, all real: a `Nomination` carries
+`(underlying, sleeve, direction, conviction)` and **cannot carry entry/stop levels**;
+`verify_defined_risk()` derives max loss from **leg geometry** and has no path for a share
+position; the cron is **30-minute** and this needs the 9:30–9:35 range plus entry within
+minutes. Correct as a mid-contest addition with the out-of-sample work already behind it.
+
+**Also:** CI had failed on EVERY push since the repo went public —
+`ModuleNotFoundError: anthropic`, because the workflow installed only pytest while the suite
+imports `committee.cycle`. Green locally against a populated `.venv`, red on every clean
+checkout. Fixed; hardcoded test count dropped from the job name (second time it went stale).
