@@ -253,3 +253,69 @@ def test_a_partially_closed_structure_is_labelled_partial():
     held = held_positions([broker_leg("A", -40.0), broker_leg("B", 5.0)], [executed_condor()])
     assert len(held) == 1
     assert "partial" in held[0].strategy
+
+
+# ── a close is only closed when the BROKER says so ────────────────────────────────
+
+from committee.cycle import verify_closed  # noqa: E402
+
+# The verbatim rejection Alpaca returned on 2026-08-28, closing a WINNING IWM condor.
+ALPACA_REJECTION = (
+    "The closing order was rejected by Alpaca:\n\n"
+    "**Error (HTTP 403, code 40310000):** \"order has been rejected due to no "
+    "available quote for symbol. please reenter with a limit\""
+)
+
+
+def test_the_old_heuristic_could_not_see_this_rejection():
+    """Why the bug existed: success was 'output does not begin with ERROR or DENIED'.
+
+    This rejection begins with neither, so a refused order read as a completed exit.
+    """
+    assert not ALPACA_REJECTION.startswith(("ERROR", "DENIED"))
+
+
+def test_a_rejected_close_is_not_closed_while_the_legs_remain():
+    """The order was submitted and refused, so the broker still holds all four legs."""
+    legs = [broker_leg(s, -12.5) for s in ("A", "B", "C", "D")]
+    assert not verify_closed(
+        "fp1", submitted=True, refetch_positions=lambda: legs,
+        open_decisions=[executed_condor()],
+    )
+
+
+def test_a_close_is_recorded_only_once_the_legs_are_gone():
+    assert verify_closed(
+        "fp1", submitted=True, refetch_positions=lambda: [],
+        open_decisions=[executed_condor()],
+    )
+
+
+def test_a_partial_close_is_not_a_close():
+    """Two legs filled, two rejected — the position is still live and still needs an exit."""
+    legs = [broker_leg(s, -12.5) for s in ("A", "B")]
+    assert not verify_closed(
+        "fp1", submitted=True, refetch_positions=lambda: legs,
+        open_decisions=[executed_condor()],
+    )
+
+
+def test_an_unverifiable_close_is_not_closed():
+    """If the book cannot be re-read, the honest answer is 'not closed', never 'closed'."""
+    def boom() -> list[dict]:
+        raise RuntimeError("broker unreachable")
+
+    assert not verify_closed(
+        "fp1", submitted=True, refetch_positions=boom, open_decisions=[executed_condor()],
+    )
+    assert not verify_closed(
+        "fp1", submitted=True, refetch_positions=None, open_decisions=[executed_condor()],
+    )
+
+
+def test_no_order_submitted_is_never_a_close():
+    """An empty book must not read as success when nothing was ever sent."""
+    assert not verify_closed(
+        "fp1", submitted=False, refetch_positions=lambda: [],
+        open_decisions=[executed_condor()],
+    )

@@ -26,7 +26,7 @@ import json
 import re
 from dataclasses import asdict, dataclass, field, replace
 from datetime import date, datetime
-from typing import Any, Sequence
+from typing import Any, Callable, Sequence
 
 from anthropic import AsyncAnthropic
 
@@ -417,6 +417,40 @@ async def _scout(
     return parse_nominations(turn.text, role.name, sleeve, allowed)
 
 
+def verify_closed(
+    fingerprint: str,
+    *,
+    submitted: bool,
+    refetch_positions: Callable[[], list[dict[str, Any]]] | None,
+    open_decisions: list[dict[str, Any]] | None,
+) -> bool:
+    """Did the BROKER actually let go of this position?
+
+    The exit path used to infer this from the shape of the closing tool's output — success
+    was "a place_option_order call whose result does not begin with ERROR or DENIED".
+    Alpaca's rejection begins with neither:
+
+        order has been rejected due to no available quote for symbol.
+        please reenter with a limit
+
+    so on 2026-08-28 a REJECTED close was recorded as closed, and the agent carried an IWM
+    condor it believed it had exited. A book the gates cannot trust corrupts everything
+    downstream — sizing, concentration and defined-risk all read from it. That is the
+    "$2,015 P&L, 100% win rate -> $89" failure with extra steps.
+
+    So this asks the broker instead. An accepted-but-unfilled order reads as NOT closed,
+    which is the conservative direction; the caller keeps `submitted` separately so the
+    distinction is not lost.
+    """
+    if not submitted or refetch_positions is None:
+        return False
+    try:
+        still_held = {h.fingerprint for h in held_positions(refetch_positions(), open_decisions or [])}
+    except Exception:  # noqa: BLE001 — unverified is NOT closed
+        return False
+    return fingerprint not in still_held
+
+
 async def run_cycle(
     snapshot: MarketSnapshot,
     creds: McpCredentials,
@@ -437,6 +471,7 @@ async def run_cycle(
     manage_config: ManageConfig | None = None,
     switches: Switches | None = None,
     candidates: list[Candidate] | None = None,
+    refetch_positions: Callable[[], list[dict[str, Any]]] | None = None,
 ) -> CycleRecord:
     """`max_cycle_usd` stops a single sitting that turns pathological. An observed debating
     cycle costs ~$2; the structural worst case is ~$11. This runs unattended, so it must be
@@ -516,13 +551,29 @@ async def run_cycle(
                     "place_option_order — buy back what we sold and sell what we bought.\n\n"
                     f"Underlying {p.underlying}, {p.strategy}, expiry {p.expiry}.\n"
                     f"Reason: {decision.reason.value} — {decision.detail}\n"
-                    "Use get_all_positions to read the exact legs and quantities first.",
+                    "Use get_all_positions to read the exact legs and quantities first.\n\n"
+                    "⚠️ Use a LIMIT order, never a market order. Alpaca rejects a multi-leg "
+                    "MARKET order when ANY leg has no live quote (HTTP 403, code 40310000), "
+                    "and a worthless wing with no quote is the normal state of a spread that "
+                    "is WINNING — so a market close fails precisely when we were right. "
+                    "Read the current quotes and set a marketable limit. You are explicitly "
+                    "authorised to choose that price: it is part of this instruction, not an "
+                    "improvisation, and getting out is worth more than the last cent of edge. "
+                    "Report the limit you used.",
                 )
                 _record_turn(record, turn)
-                closed = any(
+                submitted = any(
                     c.tool == "place_option_order" and not c.result.startswith(("ERROR", "DENIED"))
                     for c in turn.tool_calls
                 )
+                # Ask the broker, never the tool output. See verify_closed.
+                closed = verify_closed(
+                    p.fingerprint,
+                    submitted=submitted,
+                    refetch_positions=refetch_positions,
+                    open_decisions=open_decisions,
+                )
+                record.exits[i]["submitted"] = submitted
                 record.exits[i]["closed"] = closed
                 record.exits[i]["note"] = turn.text[:400]
                 if closed:

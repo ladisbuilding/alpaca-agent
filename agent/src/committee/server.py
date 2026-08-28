@@ -228,6 +228,9 @@ async def one_cycle(force: bool = False, live: bool | None = None) -> dict:
         open_decisions=open_decisions(api),
         broker_positions=broker_positions,
         candidates=screened,
+        # Lets the exit path re-read the book from the broker after a close, instead of
+        # trusting the closing tool call's output. See the note in cycle.py.
+        refetch_positions=rest.positions,
         switches=Switches.parse(
             os.environ.get("STRATEGY_MODES"),
             global_kill=os.environ.get("KILL_SWITCH", "false").lower() == "true",
