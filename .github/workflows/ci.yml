@@ -6,7 +6,7 @@ on:
 
 jobs:
   agent:
-    name: agent — 145 tests
+    name: agent — unit tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -17,7 +17,11 @@ jobs:
         working-directory: agent
         run: |
           python -m pip install --upgrade pip
-          pip install pytest
+          # The suite imports committee.cycle, which imports the anthropic SDK at module
+          # scope — so the package must be present even though no key is used and no
+          # network call is made. Installing only pytest passed locally (a populated
+          # .venv) and failed every run on a clean checkout.
+          pip install pytest -r requirements.txt
       - name: Test
         working-directory: agent
         env:
