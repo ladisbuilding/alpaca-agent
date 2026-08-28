@@ -276,6 +276,44 @@ and tuning all still happen during the week — and all of it is postable.
 > a screener sitting in the toolbox, never opened, while the agent was capped at my
 > first guess
 
+**i tested the most popular day trading strategy on earth** ⭐⭐⭐
+> ross cameron style gap-and-go. small caps, 10%+ gap, huge relative volume
+>
+> not on a watchlist. every tradable us equity — and every DELISTED one too,
+> because a small cap backtest built only from survivors quietly deletes the
+> pump-and-dumps that blew up
+>
+> 1,372 setups. 1,008 triggered
+>
+> +0.126R per trade. t = 3.04
+>
+> it works
+
+**the only number that matters is what it costs to collect** ⭐⭐⭐
+> everyone backtests the entry. almost nobody backtests the fill
+>
+>   0.00% slippage   +0.205R   t=+4.89
+>   0.25%            +0.126R   t=+3.04
+>   0.50%            +0.064R   t=+1.56
+>   1.00%            -0.053R   t=-1.33
+>
+> the edge dies at 0.6%. so the strategy isn't "does gap-and-go work" —
+> it's "can you get filled inside 60 basis points"
+>
+> and my stop model is too kind. real stops on a reversing gapper slip worse
+> than entries do. so the true break-even is lower than that
+
+**survivorship bias, actually measured instead of hand-waved** ⭐⭐
+> "i excluded delisted stocks" is the most common silent lie in retail backtesting
+>
+> so i pulled the 2,000 delisted names and ran them too
+>
+> survivors  +0.126R
+> delisted   +0.119R
+>
+> no material difference. the bias wasn't driving it. now i can say that
+> instead of hoping
+
 **twelve tests, one winner, and that is the problem** ⭐⭐
 > tested four technical signals out of sample. one cleared costs
 >
