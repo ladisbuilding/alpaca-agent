@@ -1096,3 +1096,48 @@ gapper. **But n=2 is not evidence.**
 NOTHING on this project has shown an edge that survives honest costs.** The recurring shape
 every single time: **gross edge ≈ 0, and friction decides.** Cost: ~$50 of API spend and no
 capital. The deliverable is the battery, which catches this in one pass instead of four.
+
+### 2026-08-31 (night, cont. 4) — a Reddit thread found a REAL design error in our sleeve
+Luke sent an r/options thread on 45-DTE SPX iron condors. Most of it does not survive scrutiny,
+but **one structural point does, and it exposes a genuine flaw in what we built.**
+
+**⭐⭐⭐ THE FLAW: our condors were too SMALL to carry a fixed four-leg toll.**
+Same four legs, same per-leg spread — but credit scales with tenor:
+
+    SPY  2-9 DTE   spread 2.4% of mid, median leg $0.49
+    SPY 35-55 DTE  spread 1.0% of mid, median leg $3.15   <- 6x the premium, 1/2 the % spread
+
+Re-ran the income backtest at **45 DTE, take profit at 50%**, identical machinery,
+2024-01→2026-08, friction crossed both ways:
+
+    2-9 DTE  (what we run)   mean -$26.56/condor  t=-2.54
+    45 DTE   (the thread)    mean  -$5.21/condor  t=-0.16
+    SPY 45 DTE               mean +$21.50/condor  t=+0.37   <- first POSITIVE structure found
+    QQQ 45 DTE               mean -$19.81         IWM 45 DTE  mean -$22.11
+
+⇒ **+$21/condor improvement from tenor alone; SPY improved $37.** The design error was real.
+⚠️ But t=+0.37 on n=48 **proves nothing** — this moved from clearly-losing to
+indistinguishable-from-zero. Progress, not edge.
+
+**⭐⭐ THE THREAD'S INSTRUMENT ADVICE DOES NOT TRANSFER.** Its central claim is that SPX is
+where you get mid fills. Measured on Alpaca:
+
+    SPY   median spread  0.99% of mid   (p25 0.45%)
+    SPX   median spread  2.37% of mid   (p25 1.44%)   <- 2.4x WIDER than SPY
+    XSP   median spread 26.65% of mid                 <- untradeable
+
+SPX/SPXW **are** tradable on Alpaca, but carry **no greeks or IV** in snapshots, so delta-based
+strike selection would need Black-Scholes computed locally. ⭐ The thread's author trades
+tastytrade with direct routing and WORKS his orders; that experience does not survive the move
+to a different broker's quoted market.
+
+**⚠️ The thread's own arithmetic is unsound** and nobody caught it: the 91.2% annualised figure
+**excludes losing trades entirely** — the author says so outright. At 0.20/0.10 delta you win
+~85-90% and lose ~$4,000 when you don't; the losses ARE the economics. The commenters' hedge
+critique is correct (UVXY does not track spot VIX, contango + leverage decay, and "reusable
+insurance" is wrong because the hedge bleeds). **Most telling: the author abandoned the
+mechanical condor within weeks** for bear calls and /MES strangles, conceding "generally one
+side is a winner and the other a loser/scratch."
+
+⇒ **Best-supported configuration if the sleeve keeps trading: SPY only, 45 DTE, take profit at
+50%, no regime gate.** Drop QQQ and IWM (both negative at every tenor). Still unproven.
