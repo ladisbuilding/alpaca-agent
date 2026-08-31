@@ -1008,3 +1008,51 @@ Six months could not tell them apart — **both looked excellent in 2026.**
 **`docs/STRATEGY-BRIEF.md` corrected** — it had been written for Luke to send to another model
 for independent review and contained the now-falsified RSI(2) claims. Retracted in place, with
 the error explained, and the gap-and-go section rewritten with its full-history numbers.
+
+### 2026-08-31 (night, cont. 2) — ⚠️ gap-and-go: THE EDGE IS ZERO AT REALISTIC FILLS
+Measured the quoted spread for **every setup individually** (1,344 of 1,372) instead of
+applying one median, and charged each trade its own. **Both findings are fatal.**
+
+**⭐⭐⭐ 1. My spread-filter hypothesis was BACKWARDS.** I had written in `gapgo.py` that
+"MAX_SPREAD is not a refinement — it is the strategy." **Wrong, and inverted:**
+
+    Q1  0.00-0.37%   n=197  +0.100R  t=+1.14
+    Q2  0.37-0.57%   n=198  -0.077R  t=-0.89
+    Q3  0.57-0.78%   n=197  -0.060R  t=-0.65
+    Q4  0.78-1.08%   n=198  +0.143R  t=+1.51
+    Q5  1.09-16.4%   n=198  **+0.332R  t=+3.49**   <- the whole edge
+
+    excluding Q5 (80% of all setups): n=790  mean +0.027R  t=+0.59  — NOTHING
+
+**Every filter made it worse.** The edge lives exactly where execution is least trustworthy.
+
+**⭐⭐⭐ 2. It only survives on a MIDPOINT fill.** Slippage as a multiple of each setup's own
+measured spread:
+
+    0.5x (fill at the mid)      +0.088R  t=+2.13   $205/day
+    1.0x (CROSS the spread)     +0.001R  t=+0.01   **$1/day**
+    1.5x (cross + adverse)      -0.087R  t=-2.22  -$204/day
+
+**A marketable order crosses the spread. That is an edge of exactly zero.** Capping spread at
+2% gives -0.012R, because the edge was in the names being excluded.
+
+⇒ **Same shape as ORB** (edge $3.85 vs friction $4.00), which was abandoned for the same
+reason. ⭐ **The pattern is now three-for-three on this project: a signal that clears a
+MODELLED cost dies against the MEASURED one.**
+
+**⭐ The methodological escalation is the reusable part.** Each layer of realism removed an
+illusion, and none of the earlier layers could have caught the next:
+
+    1. 2026 only, flat 0.25% slip          +0.126R  t=+3.04   looked excellent
+    2. full 11-year history                +0.142R  t=+2.94   SURVIVED (this killed RSI(2))
+    3. per-setup real spreads, mid fill     +0.088R  t=+2.13   weaker
+    4. per-setup real spreads, cross        +0.001R  t=+0.01   DEAD
+
+⭐ **"Charge friction" is not one check.** A median spread is not per-setup spread, and a
+midpoint fill is not a marketable fill. Both briefs corrected in place.
+
+**What remains open, and it is a real question rather than a rescue:** can price improvement
+be obtained by RESTING a limit at the mid? That trades spread cost for adverse selection —
+you fill preferentially when the move goes against you — and it cannot be modelled without
+tick data, nor validated on paper (paper fills instantly at the quote, which is the exact
+fiction in question).

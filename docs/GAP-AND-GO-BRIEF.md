@@ -1,5 +1,38 @@
 # Gap-and-go: a strategy for independent review
 
+> ## ⚠️ UPDATE, same day — THE EDGE IS EXACTLY ZERO AT REALISTIC FILLS
+>
+> After writing this I measured the quoted spread for **every individual setup** (1,344 of
+> them) instead of applying one median, and charged each trade its own. Two findings, both
+> fatal:
+>
+> **1. The edge lives ENTIRELY in the widest-spread names.**
+>
+> | | n | mean R | t |
+> |---|---|---|---|
+> | widest quintile only (spread 1.09%–16%) | 198 | **+0.332R** | **+3.49** |
+> | **everything else (80% of setups)** | **790** | **+0.027R** | **+0.59** |
+>
+> **2. It survives only on a midpoint fill.** Slippage as a multiple of each setup's own
+> measured spread:
+>
+> | assumption | mean R | t | $/day |
+> |---|---|---|---|
+> | 0.5× spread — fill at the midpoint | +0.088R | +2.13 | $205 |
+> | **1.0× spread — cross the spread (what a marketable order does)** | **+0.001R** | **+0.01** | **$1** |
+> | 1.5× spread — cross plus adverse move | −0.087R | −2.22 | −$204 |
+>
+> Filtering does not rescue it: capping spread at 2% gives −0.012R, because the edge was in
+> the names being excluded.
+>
+> ⇒ **The strategy requires price improvement on low-float runners in the first minutes of
+> the session.** A marketable order crosses the spread and nets nothing. Resting a limit at
+> the mid invites adverse selection I cannot model without tick data. **Section 6's question
+> about validating execution is now THE question, not a footnote.**
+>
+> This is the same shape as the opening-range-breakout strategy previously abandoned here:
+> edge $3.85 per contract against friction of $4.00.
+
 **Assume no prior context. Please try to break this, not confirm it.** I have listed the
 weaknesses I already know at the end; the useful answer is the one I have not thought of.
 Where you think I am wrong, say so plainly.
