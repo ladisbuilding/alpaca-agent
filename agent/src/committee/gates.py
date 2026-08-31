@@ -51,6 +51,44 @@ class Leg:
 
 
 @dataclass(frozen=True)
+class ShareLeg:
+    """A share position — the non-option case, kept explicit so it can never be implicit.
+
+    ⚠️ Shares are NOT defined-risk. An option vertical has a long wing that caps the loss
+    arithmetically; long stock can go to zero and short stock is unbounded. So `stress_move`
+    is a MODELLED bound measured from the symbol's own realised history (see shares.py), and
+    the gate below re-derives the loss from it rather than trusting a supplied number.
+
+    This type exists so that a share position cannot slip through as "an option structure
+    with no legs" — which would return False from has_uncovered_short and None from
+    verify_defined_risk, and sail through every percentage gate on an unverified figure.
+    """
+
+    symbol: str
+    side: Side
+    qty: int
+    ref_price: float
+    stress_move: float  # fraction; the modelled worst adverse session
+    exit_on: date  # share strategies here are time-boxed, never open-ended
+
+    def __post_init__(self) -> None:
+        if self.qty <= 0:
+            raise ValueError(f"share qty must be positive, got {self.qty}")
+        if self.ref_price <= 0:
+            raise ValueError(f"ref_price must be positive, got {self.ref_price}")
+        if not 0 < self.stress_move < 1:
+            raise ValueError(f"stress_move must be a fraction in (0,1), got {self.stress_move}")
+
+    @property
+    def notional(self) -> float:
+        return self.qty * self.ref_price
+
+    @property
+    def modelled_max_loss(self) -> float:
+        return self.notional * self.stress_move
+
+
+@dataclass(frozen=True)
 class Proposal:
     """A trade the committee wants to place.
 
@@ -67,9 +105,26 @@ class Proposal:
     max_profit: float  # positive dollars
     net_credit: float  # positive = credit received, negative = debit paid
     bid_ask_pct: float = 0.0  # width of the structure's spread as a fraction of its mid
+    # Set for a SHARE position, in which case `legs` is empty. Exactly one of the two is
+    # populated, and `__post_init__` refuses anything else — a proposal that is neither is
+    # a proposal no gate can verify.
+    share: ShareLeg | None = None
+
+    def __post_init__(self) -> None:
+        if bool(self.legs) == (self.share is not None):
+            raise ValueError(
+                "a Proposal must have EITHER option legs OR a share position, never both "
+                f"and never neither (legs={len(self.legs)}, share={self.share is not None})"
+            )
+
+    @property
+    def is_share(self) -> bool:
+        return self.share is not None
 
     @property
     def expiry(self) -> date:
+        if self.share is not None:
+            return self.share.exit_on
         return max(leg.expiry for leg in self.legs)
 
     @property
@@ -80,6 +135,11 @@ class Proposal:
         underlying at the same strikes and expiry. This is what the dedup gate keys on —
         see `DEDUP` in the gate list for why the window is tied to expiry.
         """
+        if self.share is not None:
+            return (
+                f"{self.underlying}|{self.strategy}|{self.share.exit_on.isoformat()}"
+                f"|{self.share.side.value}"
+            )
         strikes = ",".join(
             f"{leg.right.value}{leg.strike:g}{leg.side.value[0]}" for leg in sorted(self.legs, key=lambda l: (l.right.value, l.strike))
         )
@@ -93,6 +153,9 @@ class OpenPosition:
     fingerprint: str
     max_loss: float
     expiry: date
+    # Gross notional for a SHARE position, 0 for an option structure whose risk is already
+    # bounded by geometry. Without it the aggregate exposure gate has nothing to sum.
+    share_notional: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -106,6 +169,10 @@ class PortfolioState:
     @property
     def deployed_risk(self) -> float:
         return sum(p.max_loss for p in self.open_positions)
+
+    @property
+    def gross_share_notional(self) -> float:
+        return sum(p.share_notional for p in self.open_positions)
 
 
 @dataclass(frozen=True)
@@ -134,6 +201,17 @@ class RiskConfig:
     max_bid_ask_pct: float = 0.15  # refuse to cross a spread wider than 15% of mid
     no_new_trades_within_minutes_of_close: int = 15
     buying_power_buffer: float = 0.20  # never consume the last 20% of buying power
+    # Gross exposure ceiling for a SHARE position, independent of the stress model. Shares
+    # are not defined-risk, and the stress bound is calibrated to ordinary adverse sessions
+    # — it cannot see a gap through itself (a halt-and-reopen, an issuer event). Size is the
+    # only defence against that, so it is capped separately rather than inferred from risk.
+    max_share_notional_pct: float = 0.25
+    # AGGREGATE gross share exposure. The per-position cap above does not bound this: a
+    # basket of quiet assets sizes to a large notional for a small modelled loss, so 12
+    # positions could reach ~300% gross while still sitting inside max_deployed_risk_pct.
+    # The stress model cannot see a gap through itself, and leverage is what turns such a
+    # gap into a solvency event rather than a bad day.
+    max_gross_share_notional_pct: float = 1.50
 
 
 @dataclass
@@ -173,6 +251,8 @@ def verify_defined_risk(proposal: Proposal) -> float | None:
     strategy that under-reports its own risk would otherwise sail through every
     percentage-based gate below.
     """
+    if proposal.share is not None:
+        return None  # not an option structure; verify_share_risk owns this case
     by_right: dict[Right, list[Leg]] = {}
     for leg in proposal.legs:
         by_right.setdefault(leg.right, []).append(leg)
@@ -222,6 +302,18 @@ def verify_defined_risk(proposal: Proposal) -> float | None:
         worst_side = sum(width_by_right.values())
 
     return worst_side * CONTRACT_SIZE - max(proposal.net_credit, 0.0)
+
+
+def verify_share_risk(proposal: Proposal) -> float | None:
+    """Re-derive a share position's MODELLED max loss from qty x price x stress.
+
+    The mirror of verify_defined_risk, and it exists for the same reason: `max_loss` is
+    supplied by the sizing layer, and a layer that under-reports would otherwise pass every
+    percentage-based gate below. Returns None when the proposal is not a share position.
+    """
+    if proposal.share is None:
+        return None
+    return proposal.share.modelled_max_loss
 
 
 def has_uncovered_short(proposal: Proposal) -> bool:
@@ -276,8 +368,50 @@ def evaluate(
                 f"({now_et:%H:%M} ET >= {cutoff:%H:%M} ET) — liquidity thins and fills degrade.",
             )
 
+    # ── RISK MODEL ─────────────────────────────────────────────────────────────────
+    # A share position is verified against its MODELLED stress bound; an option structure
+    # against its leg geometry. The branch is explicit because the dangerous failure is a
+    # share position falling through the option path — has_uncovered_short() would see no
+    # legs and return False, verify_defined_risk() would return None, and the position
+    # would be sized off a number nothing had checked.
+    if proposal.share is not None:
+        derived_share = verify_share_risk(proposal)
+        if derived_share is None or proposal.max_loss < derived_share - 0.01:
+            result.block(
+                "MISREPORTED_RISK",
+                f"Share position claims max loss ${proposal.max_loss:,.2f} but "
+                f"{proposal.share.qty} x ${proposal.share.ref_price:,.2f} at a "
+                f"{proposal.share.stress_move:.2%} stress move implies "
+                f"${derived_share or 0:,.2f}.",
+            )
+        if proposal.share.symbol.upper() != proposal.underlying.upper():
+            result.block(
+                "MISREPORTED_RISK",
+                f"Share leg is {proposal.share.symbol} but the proposal claims "
+                f"{proposal.underlying}.",
+            )
+        # Gross exposure is bounded separately: the stress model cannot see a gap THROUGH
+        # it (a halt-and-reopen, an issuer event), and size is the only defence there.
+        notional_cap = portfolio.equity * config.max_share_notional_pct
+        if proposal.share.notional > notional_cap:
+            result.block(
+                "NOTIONAL_TOO_LARGE",
+                f"${proposal.share.notional:,.0f} of {proposal.underlying} exceeds the "
+                f"${notional_cap:,.0f} cap ({config.max_share_notional_pct:.0%} of equity). "
+                "Shares are not defined-risk; size is the backstop.",
+            )
+        gross_cap = portfolio.equity * config.max_gross_share_notional_pct
+        gross = portfolio.gross_share_notional + proposal.share.notional
+        if gross > gross_cap:
+            result.block(
+                "GROSS_EXPOSURE",
+                f"Would take gross share exposure to ${gross:,.0f} "
+                f"({gross / portfolio.equity:.0%} of equity), over the ${gross_cap:,.0f} cap. "
+                "Correlated names size up together; leverage is what makes a gap fatal.",
+            )
+
     # ── DEFINED RISK ───────────────────────────────────────────────────────────────
-    # Non-negotiable: the account must never carry an undefined-loss position.
+    # Non-negotiable: the account must never carry an undefined-loss OPTION position.
     if has_uncovered_short(proposal):
         result.block(
             "UNDEFINED_RISK",
@@ -300,7 +434,7 @@ def evaluate(
     # the other half of the check above: verify_defined_risk() returns None for debit
     # verticals (the short sits further OTM than the long, so there is no protective leg
     # to measure against), which would otherwise leave them entirely unverified.
-    if proposal.net_credit < 0:
+    if proposal.net_credit < 0 and proposal.share is None:
         debit = abs(proposal.net_credit)
         if abs(proposal.max_loss - debit) > 0.01:
             result.block(
@@ -398,7 +532,7 @@ def evaluate(
         )
 
     # ── WARNINGS (never block) ─────────────────────────────────────────────────────
-    if proposal.expiry <= now.date():
+    if proposal.share is None and proposal.expiry <= now.date():
         result.warnings.append("Structure expires today — gamma risk is at its maximum.")
     if portfolio.realized_pnl_today < 0 and not result.blocked_by:
         result.warnings.append(

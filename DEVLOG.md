@@ -850,3 +850,51 @@ backtest numbers.**
 ⭐ RSI(2) is also far EASIER to build than gap-and-go: daily bars, liquid ETFs, one decision
 a day, fits the existing 30-min cron. Both still need share-position support (a `Nomination`
 cannot carry levels; `verify_defined_risk()` is leg-geometry-only).
+
+### 2026-08-31 (eve) — the SHARE SLEEVE: RSI(2) reversion, gated
+Built the missing capability. `shares.py` + `reversion.py` + share primitives in `gates.py`,
+20 new tests (200 total, all green).
+
+**⚠️ The dangerous failure this is built around:** a share position has NO option legs, so
+`has_uncovered_short()` returns False and `verify_defined_risk()` returns None — **a share
+position would have sailed through every percentage-based gate on an unverified `max_loss`.**
+That is precisely what gates.py's own docstring warns about. So a `Proposal` now refuses at
+construction to be anything other than EITHER option legs OR a share leg, and shares get
+their own `verify_share_risk()` re-derivation.
+
+**Shares are NOT defined-risk and the code says so everywhere.** No long wing caps the loss.
+The bound is MODELLED: `stress_move = max(8 x sigma, worst observed session)`, measured per
+symbol. Over 2024-01 → 2026-08 the worst session in the basket was **EFA −6.60% (6.7 sigma)**;
+IWM 4.8 sigma, TLT 3.9 — so 8 sigma sits beyond anything actually delivered.
+
+**⭐ Sizing to RISK, not to a round number.** Position = risk_budget / (price x stress), so a
+quiet bond ETF takes a bigger position than a volatile small-cap for the same downside.
+
+**⭐⭐ THE CORRELATION FINDING — the basket is not 7 bets.**
+
+    mean pairwise correlation 0.51    LQD/TLT/IEF: 0.89-0.92    EFA/EEM/IWM: 0.62-0.79
+    => 7 assets = 1.7 EFFECTIVE INDEPENDENT BETS
+
+On the first live scan **all six signals fired the same day, all long** (RSI(2)=0.0 across
+the basket — one macro move, not six independent reads). ⭐ **I nearly added a cluster-risk
+gate for this and then checked: `max_deployed_risk_pct` SUMS max_loss linearly, which IS the
+perfectly-correlated worst case. It was already correct.** Summing beats root-summing here.
+
+**⭐ A REAL HOLE, found by the scan and closed:** the per-position notional cap (25%) does not
+bound the AGGREGATE. Quiet assets size to a large notional for a small modelled loss, so 12
+positions could reach **~300% gross** while every position AND total risk stayed inside their
+limits. Added `max_gross_share_notional_pct = 1.50` and `OpenPosition.share_notional`.
+
+**⭐ Two bugs the tests caught immediately:**
+* **A flat price series returned RSI = 100** — the usual `losses == 0 -> 100` shortcut reports
+  maximum overbought on a price that never moved, and **fired a SHORT signal on a constant
+  series.** No gains AND no losses is undefined = 50.
+* **`scan_reversion.py` evaluated every signal against an EMPTY book**, showing six APPROVEDs
+  that could never all be taken. Fixed to accumulate. ⭐ **A per-item check that never sees
+  the accumulating total is not a portfolio check.**
+
+**Live scan today:** 6 signals, all approved, **$8,981 risk (9.0% of equity), $134,972 gross
+(136%)**. Under the 10% cap — but that is one correlated bet, not six.
+
+⚠️ NOT yet wired to the committee or an executor. Next: an executor path for shares and the
+1-day time-boxed exit.
