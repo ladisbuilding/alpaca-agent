@@ -30,13 +30,29 @@ from .gates import CONTRACT_SIZE, Leg, Proposal, Right, Side
 @dataclass(frozen=True)
 class IncomeConfig:
     short_delta: float = 0.16  # magnitude; sign is applied per side
-    wing_width: float = 5.0  # dollars
+    wing_width: float = 10.0  # dollars — sized for 45 DTE strikes, not 2 DTE
     # ⚠️ min_dte was 1, which walked straight into the assignment trap the Bear identified:
     # "~10% chance of closing 753-758 → assignment of $75,800 SPY on a $100k book, worthless
     # wing. 'Defined risk' ends at 4pm." A short leg finishing ITM is assigned, and the long
     # wing does not help overnight. Never enter 0-1 DTE.
-    min_dte: int = 2
-    max_dte: int = 9
+    # ⚠️⚠️ RAISED FROM 2-9 ON MEASURED EVIDENCE. A four-leg condor pays a FIXED spread toll,
+    # but the credit it collects scales with tenor — so a short-dated condor is simply too
+    # small to carry its own cost:
+    #
+    #     SPY  2-9 DTE   spread 2.4% of mid, median leg $0.49
+    #     SPY 35-55 DTE  spread 1.0% of mid, median leg $3.15   (6x premium, half the % spread)
+    #
+    # Backtested 2024-01 -> 2026-08 on identical machinery, friction crossed both ways:
+    #     2-9 DTE   mean -$26.56/condor  t=-2.54
+    #     45 DTE    mean  -$5.21/condor  t=-0.16
+    #     SPY 45DTE mean +$21.50/condor  t=+0.37   <- the only positive structure found
+    #
+    # ⚠️ t=+0.37 on n=48 is NOT evidence of edge. This moved the sleeve from clearly losing to
+    # indistinguishable from zero, which is why it now runs as a MEASUREMENT of fill quality
+    # rather than as a profit expectation.
+    min_dte: int = 35
+    max_dte: int = 55
+    # Wider wings suit the wider strikes at this tenor; 5 was sized for a 2-DTE structure.
     qty: int = 1
     fill: FillAssumption = FillAssumption.CONSERVATIVE
 

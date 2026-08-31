@@ -1141,3 +1141,38 @@ side is a winner and the other a loser/scratch."
 
 ⇒ **Best-supported configuration if the sleeve keeps trading: SPY only, 45 DTE, take profit at
 50%, no regime gate.** Drop QQQ and IWM (both negative at every tenor). Still unproven.
+
+### 2026-08-31 (night, cont. 5) — the sleeve is now an EXPERIMENT, not a strategy
+Reconfigured on measured evidence, and instrumented to answer the one question that has
+killed everything here.
+
+**Changes, each with the measurement behind it:**
+1. **45 DTE, wings 10** (was 2-9 DTE, wings 5). Tenor alone is worth +$21/condor; SPY +$37.
+   A four-leg condor pays a FIXED toll and short-dated credit is too small to carry it.
+2. **SPY only** (was QQQ,SPY,IWM). QQQ is negative BEFORE costs (-$20.42 gross); IWM's +$20
+   gross is exceeded by its own 9.4% spread. SPY also quotes tightest — 0.99% of mid vs SPX
+   2.37% and XSP 26.65%.
+3. **The regime read is ADVISORY, no longer a gate.** Gating on it made results worse in
+   every measured case (ungated -$26.56 vs gated -$35.56; SPY -$15.97 vs -$61.93). It is
+   still shown to the scouts because the measurement is real — it just no longer decides.
+4. **`fills.py` + `scripts/fill_quality.py` — THE missing instrument.** `quotes_at_submit`
+   now captures bid/ask per leg AT SUBMISSION (unrecoverable afterwards; the quote moves),
+   and the reconciler compares it to the actual fill:
+
+        slippage_fraction = (fill - mid) / half-spread
+          0.0 = filled at mid    -> the optimistic backtests apply
+          1.0 = crossed          -> the edge is zero, stop
+
+⭐ **Why this matters more than any strategy work here:** all four deaths (ORB, RSI(2),
+gap-and-go, income) turned on this one unknown. A backtest can only ASSUME it. **Paper
+trading cannot answer it either — paper fills instantly at the quote, which is the exact
+fiction in question** — which is why the instrument reconciles against REAL fill prices from
+the activities feed rather than trusting the simulated result.
+
+⚠️ **Expectation set in advance, so it cannot be rationalised later:** median slippage < 0.5
+⇒ the mid-fill backtests apply and IWM/gap-and-go deserve re-examination. ≥ 0.9 ⇒ we cross,
+the edge is zero, and the honest conclusion is that simple systematic strategies do not clear
+retail costs. **Prior: ~30% that fills are good enough.** n=2 so far (+$21, +$12) is
+suggestive and worthless.
+
+206 tests green. Not deployed — needs a container build.

@@ -286,6 +286,7 @@ async def one_cycle(force: bool = False, live: bool | None = None) -> dict:
         broker_positions=broker_positions,
         candidates=screened,
         reversion_closes=_reversion_closes(rest, snapshot),
+        rest=rest,  # read-only; quote capture at submission for fill-quality measurement
         # Its own cap: the basket yields ~4 signals a day and MAX_TRADES=2 is a bound on the
         # LLM-driven sleeve, not on a deterministic one. The risk gates bound exposure.
         max_reversion_trades=int(os.environ.get("MAX_REVERSION_TRADES", "4")),

@@ -103,6 +103,9 @@ class Deliberation:
     executed: bool = False
     execution_note: str | None = None
     evidence: list[str] = field(default_factory=list)
+    # Bid/ask per leg AT SUBMISSION. Cannot be recovered afterwards — the quote moves — and
+    # it is the input to the fill-quality measurement every strategy here has died on.
+    quotes_at_submit: dict[str, dict[str, float]] = field(default_factory=dict)
 
 
 @dataclass
@@ -414,11 +417,24 @@ async def _scout(
         f"{len(snapshot.portfolio.open_positions)} open position(s).\n\n"
         f"Universe:\n{context}\n\n"
         f"Volatility regime (measured deterministically — do not re-derive these):\n{verdicts}\n\n"
+        # ⚠️⚠️ THE REGIME READ IS NOW ADVISORY FOR THE INCOME SLEEVE, NOT A GATE.
+        # Backtested 2024-01 -> 2026-08, gating on "premium is rich" made results WORSE in
+        # every case measured: ungated -$26.56/condor (t=-2.54) vs regime-gated -$35.56
+        # (t=-1.74); per symbol SPY -$15.97 ungated vs -$61.93 gated. The breach-rate model
+        # is the centrepiece of this system and it has NEGATIVE measured value as a filter.
+        # It is still SHOWN, because the measurement is real and worth reading — it just no
+        # longer decides. See agent/scripts/test_income_sleeve.py.
         + (
-            f"Premium is RICH on: {', '.join(sellable)}. Selling defined-risk premium is "
-            "justified there.\n"
+            f"Premium reads RICH on: {', '.join(sellable)}.\n"
             if sellable
-            else "Premium is rich NOWHERE today — selling it is not paid for.\n"
+            else "Premium reads rich nowhere today.\n"
+        )
+        + (
+            "⚠️ Treat that read as CONTEXT, not permission. Measured over 2.5 years it did "
+            "not improve results and made them worse, so it does not by itself justify or "
+            "forbid a nomination.\n"
+            if sleeve == "income"
+            else ""
         )
         + (
             f"Premium is CHEAP on: {', '.join(buyable)}. Buying premium (debit verticals, "
@@ -441,8 +457,7 @@ async def _scout(
             if sleeve == "directional"
             else ""
         )
-        + "\nNominate from the universe or the screened candidates, and only where the regime "
-        "supports your sleeve. "
+        + "\nNominate from the universe or the screened candidates. "
         "One nomination per line, starting with the ticker. Returning nothing is correct and "
         "common — a regime with no edge deserves no nominations."
     )
@@ -491,6 +506,29 @@ def verify_closed(
     except Exception:  # noqa: BLE001 — unverified is NOT closed
         return False
     return fingerprint not in still_held
+
+
+def quote_legs(rest, symbols: list[str]) -> dict[str, dict[str, float]]:
+    """Bid/ask for each leg AT SUBMISSION. Captured here because it cannot be recovered later.
+
+    Reconciling a fill against a quote pulled afterwards measures nothing — the quote has
+    moved. This is the input to fills.py, which answers the one question every strategy on
+    this project has died on: do we cross the spread, or get price improvement?
+    """
+    if not symbols or rest is None:
+        return {}
+    try:
+        payload = rest._get(
+            f"{rest._data}/v1beta1/options/quotes/latest?symbols={','.join(symbols)}"
+        )
+    except Exception:  # noqa: BLE001 — instrumentation must never block a trade
+        return {}
+    out: dict[str, dict[str, float]] = {}
+    for sym, q in (payload.get("quotes") or {}).items():
+        bid, ask = float(q.get("bp", 0) or 0), float(q.get("ap", 0) or 0)
+        if bid > 0 and ask >= bid:
+            out[sym] = {"bid": bid, "ask": ask, "mid": round((bid + ask) / 2, 4)}
+    return out
 
 
 async def _run_reversion(
@@ -640,6 +678,7 @@ async def run_cycle(
     recent_fingerprints: list[tuple[str, date]] | None = None,
     max_trades: int = 2,
     rehearse: bool = False,
+    rest: Any = None,  # read-only, for quote instrumentation at submission
     max_cycle_usd: float = 6.0,
     open_decisions: list[dict[str, Any]] | None = None,
     broker_positions: list[dict[str, Any]] | None = None,
@@ -947,6 +986,10 @@ async def run_cycle(
             )
             order_tool = "place_option_order"
 
+        # Instrumentation only — never allowed to block or alter the order.
+        deliberation.quotes_at_submit = quote_legs(
+            rest, [l["symbol"] for l in deliberation.structure.get("legs", []) if l.get("symbol")]
+        )
         async with scoped_session(EXECUTOR.toolsets, creds) as (session, schemas):
             exec_turn = await run_turn(client, EXECUTOR, session, schemas, instruction)
         _record_turn(record, exec_turn)

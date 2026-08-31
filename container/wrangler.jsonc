@@ -35,7 +35,14 @@
 
   "vars": {
     "API_ORIGIN": "https://alpaca-agent-api.domfly.workers.dev",
-    "UNIVERSE": "QQQ,SPY,IWM",
+    // ⚠️ NARROWED FROM "QQQ,SPY,IWM" ON MEASURED EVIDENCE (2024-01 -> 2026-08, friction
+    // crossed on all four legs both ways). QQQ was NEGATIVE EVEN BEFORE COSTS and IWM's
+    // +$20 gross edge is exceeded by its own friction:
+    //     SPY  gross  -$7.97   net -$15.97   |  at 45 DTE: +$21.50/condor
+    //     QQQ  gross -$20.42   net -$52.42   <- no edge at any tenor
+    //     IWM  gross +$20.01   net -$11.99   (9.4% spread eats it)
+    // SPY also quotes far the tightest: 0.99% of mid vs SPX 2.37% and XSP 26.65%.
+    "UNIVERSE": "SPY",
     // LIVE on the DEV paper account PA35CQR61R2Q (simulated funds, paper-api endpoint).
     // Flipped 2026-08-25 to exercise the two paths that had never run: the Executor placing
     // an order, and the exit rules seeing a real position with real spreads and overnight
