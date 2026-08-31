@@ -786,3 +786,67 @@ telling itself a story ("QQQ fell 6 of 7 sessions") loses. The single catalyst-s
 directional trade (NVDA post-earnings) was the only one that behaved.
 ⭐ **Generalises past this project: the sleeve with a measurable premise made money; the sleeve
 with a narrative premise did not.**
+
+### 2026-08-31 (pm) — the $300/day question, answered from measurement
+Luke: *"FIGURE OUT HOW TO MAKE ME 300 per DAY"* plus a mandate to go wide — gold, BTC, shorts,
+swing, ORB. Did that. **Most of it failed, which is the useful part.**
+
+**⭐⭐⭐ THE DATA-PLAN TRAP — nearly invalidated everything.** A 403 on GLD looked like rate
+limiting. It was not: `"subscription does not permit querying recent SIP data"`. **SIP works
+only up to YESTERDAY; live we get IEX (~2% of volume).** Every backtest so far used SIP —
+i.e. **data we cannot trade on.** Rebuilt the test as a hybrid: **signal from IEX (what we
+see), outcome resolved on SIP (what the market actually does to us).**
+
+| | mean | t |
+|---|---|---|
+| SIP signal + SIP outcome (original backtest) | +0.178R | +1.62 |
+| IEX signal + IEX outcome (flattering — sparse bars hide stop-outs) | +0.253R | +2.29 |
+| **IEX signal + SIP outcome (HONEST)** | **+0.246R** | **+2.19** |
+
+⇒ **The data plan is NOT a blocker.** IEX's sparser prints give a NARROWER opening range, so
+entry is earlier and the stop tighter — a real refinement, not an artifact, because outcomes
+still settle on the full tape. ⭐ **Always backtest on the feed you will actually trade on;
+and an IEX-only backtest flatters itself by missing stop-outs it never printed.**
+
+**⭐ MEASURED the real spread** on 120 gapper-days at the entry minute: median **0.627%
+round trip** (p10 0.26%, p90 1.80%) vs the 0.50% modelled. Everything hinges on it:
+
+| slippage | $/day at $284 risk | Sharpe |
+|---|---|---|
+| 0.25% (modelled) | +$300 | 4.23 |
+| ~0.31% (measured median) | ~$230 | — |
+| 0.5% + stops slipping worse | +$89 (median −$7) | 1.28 |
+| 1% | **−$100** | −1.93 |
+
+**THE WIDE SWEEP: 216 tests, FDR 10% → ZERO discoveries.** Gold, silver, miners, oil, crypto
+(long-only on Alpaca — 0 of 73 pairs shortable), leveraged ETFs, trend-following, swing
+momentum — **all noise.** 13 hits at p<0.05 where noise predicts ~11.
+
+**⭐⭐⭐ THE ONE REAL FINDING — and it was PREDICTED, not mined.** The earlier 12-symbol run
+claimed short-horizon mean reversion survives where arbitrage is thin. New assets confirm it:
+
+    THIN (bonds/EM/small)   13 assets  n=951  mean +0.076%  pooled t=+3.74
+    THICK (mega-cap/index)   9 assets  n=690  mean +0.053%  pooled t=+1.37
+
+Honest core is **bonds (LQD/HYG/TLT/IEF) + international (EFA/EEM) + small caps (IWM)** —
+commodities inside my "thin" label (SLV/GDX/XLU/XLE) are NEGATIVE, so **the boundary was drawn
+too generously and partly after seeing the data.** EFA/EEM/IWM clear ETF friction 10-15x.
+
+**⭐⭐⭐ THE ACTUAL ANSWER TO $300/DAY: uncorrelated streams, not more risk.**
+
+    RSI(2) ETF basket   $150/day  Sharpe 3.87  maxDD −$2,774
+    gap-and-go          ~$300/day Sharpe 3.75  maxDD −$5,468
+    CORRELATION         +0.027  (essentially zero)
+    combined            $452/day  Sharpe 5.55
+
+⚠️ **Sharpe 5.55 is NOT credible** — Medallion runs ~2.5-3 net. 120 days is a short sample,
+stop-fills are optimistic, and part of the asset split was post-hoc. **Expect real
+degradation. The next step is to trade both small and MEASURE the decay — not to size up on
+backtest numbers.**
+
+⚠️ **"$300/day" is a MEAN, not a salary:** median +$179, **43% of days lose**, worst day
+−$2,345. It is a positive-expectancy process with fat variance, not an income stream.
+
+⭐ RSI(2) is also far EASIER to build than gap-and-go: daily bars, liquid ETFs, one decision
+a day, fits the existing 30-min cron. Both still need share-position support (a `Nomination`
+cannot carry levels; `verify_defined_risk()` is leg-geometry-only).
