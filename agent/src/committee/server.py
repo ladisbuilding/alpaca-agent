@@ -182,6 +182,26 @@ def _screen_safely(rest, today, seeds):
 # and an earlier sitting is a different trade from the one that was tested.
 REVERSION_FROM_ET_HOUR = 15
 
+# ⚠️⚠️ THE SLEEVE IS OFF BY DEFAULT — the strategy FAILED on full history.
+#
+# Measured Feb-Aug 2026 it looked excellent: +0.23%/trade, t=+4.40, Sharpe 3.87. Over the
+# full 2016-2026 record available from Alpaca it is **n=10,381, mean -0.013%, t=-1.43** and
+# NEGATIVE IN 9 OF 11 YEARS. 2026 is the single best year in the decade, and it is the year
+# it was fitted on. The thin/thick-arbitrage story died with it: thin pooled t=-1.43 against
+# thick t=-1.09 over full history — no difference at all.
+#
+# ⭐ The error was calling Feb-Aug 2026 "out of sample" because the ARCHIVED RESEARCH ended
+# there. RSI(2) is Larry Connors' published rule from the 2000s; out-of-sample relative to
+# one's own earlier work is meaningless for a rule that old. And the most persuasive argument
+# for it — "the hypothesis predicted the pattern, then new assets confirmed it" — was empty,
+# because the prediction and the confirmation came from THE SAME WINDOW. Different assets in
+# the same period is cross-sectional novelty, not temporal novelty.
+#
+# The plumbing below (share sizing, the stress-based risk model, the gates, the time-boxed
+# exit) is strategy-agnostic and stays. Only this signal is disabled. Set
+# ENABLE_REVERSION=true to re-enable, and expect to lose money if you do.
+ENABLE_REVERSION = os.environ.get("ENABLE_REVERSION", "false").lower() == "true"
+
 
 def _reversion_closes(rest, snapshot) -> dict[str, list[float]] | None:
     """Daily closes for the reversion basket, or None when it is not that time of day.
@@ -192,6 +212,8 @@ def _reversion_closes(rest, snapshot) -> dict[str, list[float]] | None:
     """
     from datetime import timedelta as _td
 
+    if not ENABLE_REVERSION:
+        return None
     now_et = datetime.now(timezone.utc).astimezone(timezone(_td(hours=-4)))
     if now_et.hour < REVERSION_FROM_ET_HOUR or not snapshot.is_open:
         return None

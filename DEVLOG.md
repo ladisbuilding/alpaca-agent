@@ -938,3 +938,44 @@ one session gives).
 **Dry run at 15:31 ET:** 6 signals, all 6 gated APPROVED, 0 executed (dry run).
 ⚠️ Live it would take 4, ~$6k risk. **Next: flip it live and MEASURE the decay against the
 backtest.** Sharpe 3.87 is not credible; the paper fills are the experiment.
+
+### 2026-08-31 (night) — ⚠️⚠️⚠️ RSI(2) IS FALSIFIED. The sleeve is disabled.
+Luke asked *"i mean cant we backtest it?"* — and that one question killed the strategy before
+it placed a single order.
+
+**I had only ever tested Feb–Aug 2026. Alpaca has data back to 2016-01-04.**
+
+    Feb-Aug 2026 (what it was fitted on)    n=   474   mean +0.231%   t=+4.40
+    FULL 2016-2026 (the whole record)       n=10,381   mean -0.013%   t=-1.43
+
+**NEGATIVE IN 9 OF 11 YEARS** (2017 t=-2.56, 2018 t=-2.48, 2019 t=-1.85). Only 2022 (+1.13)
+and 2026 (+3.72) are positive. **2026 is the single best year in the decade and it is the one
+I measured.** Per asset over full history the 2026 stars invert: LQD t=-2.90, HYG t=-2.88,
+IEF t=-2.00.
+
+**The thin/thick-arbitrage hypothesis died with it:** over full history THIN pools to
+n=10,381 t=-1.43 and THICK to n=7,714 t=-1.09. **No difference at all.** The entire story was
+a 2026 artifact.
+
+**⭐⭐⭐ THE ERROR, because it is the only durable part of this:**
+1. I called Feb–Aug 2026 *"out of sample"* because **the archived research ended there.**
+   RSI(2) is Larry Connors' published rule from the 2000s — **out-of-sample relative to your
+   own earlier work is meaningless for a rule that old.**
+2. The argument that felt STRONGEST was the emptiest. *"The hypothesis predicted the pattern,
+   then new assets confirmed it"* — but **the prediction and the confirmation came from the
+   SAME 2026 WINDOW.** Different assets in the same period is **cross-sectional** novelty, not
+   **temporal** novelty. Only the second is out-of-sample. I treated one as the other and
+   found it persuasive enough to build a sleeve on.
+3. I flagged "only ~6 months, one regime" as a weakness in `docs/STRATEGY-BRIEF.md` and then
+   **went ahead anyway** instead of spending 20 minutes on the data that was already there.
+
+⭐ **RULE: six months is not a backtest, it is an anecdote with a t-statistic. Test the
+longest history the data allows BEFORE building anything.** `scripts/test_full_history.py`
+now does it in one command.
+
+**What stays:** the share plumbing is strategy-agnostic and all of it survives — stress-based
+risk model, `verify_share_risk`, gross-exposure cap, time-boxed exit, `place_stock_order`
+path, 206 tests. **What goes:** the signal. `ENABLE_REVERSION=false` by default.
+
+**Now testing gap-and-go the same way** — it has the identical weakness (Feb–Aug 2026 only)
+and deserves the identical scepticism.

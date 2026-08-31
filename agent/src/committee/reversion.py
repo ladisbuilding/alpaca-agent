@@ -1,4 +1,32 @@
-"""RSI(2) mean reversion on bond / international / small-cap ETFs.
+"""RSI(2) mean reversion — **FALSIFIED ON FULL HISTORY. DISABLED. Kept as the record.**
+
+⚠️⚠️⚠️ **THIS STRATEGY LOSES MONEY.** Do not re-enable it without new evidence.
+
+    Feb-Aug 2026 (what it was fitted on)   n=  474   mean +0.231%/trade   t=+4.40
+    FULL 2016-2026 (Alpaca's whole record) n=10,381  mean -0.013%/trade   t=-1.43
+
+**Negative in 9 of 11 years.** 2026 is the single best year in the decade and it is the year
+the strategy was measured on. The thin/thick-arbitrage story died with it: over full history
+thin pools to t=-1.43 and thick to t=-1.09 — no difference whatsoever.
+
+⭐⭐⭐ **THE METHODOLOGICAL ERROR, because it is the reusable part.** Feb-Aug 2026 was called
+"out of sample" because the ARCHIVED RESEARCH ended there. But RSI(2) is Larry Connors'
+published rule from the 2000s — out-of-sample relative to one's own earlier work means
+nothing for a rule that old. Worse, the argument that felt strongest — *"the hypothesis
+predicted the pattern and then new assets confirmed it"* — was empty: the prediction AND the
+confirmation both came from the same 2026 window. **Different assets in the same period is
+cross-sectional novelty, not temporal novelty, and only the second one is out-of-sample.**
+
+⭐ It was caught by one question — "can't we backtest it?" — and ten years of data that had
+been available the whole time. Six months of history is not a backtest; it is an anecdote
+with a t-statistic.
+
+The original write-up follows, unchanged, because the numbers in it are real and the
+conclusion drawn from them was wrong.
+
+---
+
+RSI(2) mean reversion on bond / international / small-cap ETFs.
 
 **The claim, stated so it can be attacked:** short-horizon mean reversion still pays where
 arbitrage capital is thin, and is gone where it is thick. Measured 2026-02-06 -> 2026-08-30:
