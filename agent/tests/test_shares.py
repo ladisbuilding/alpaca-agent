@@ -235,3 +235,74 @@ def test_a_correlated_basket_is_summed_not_root_summed():
                      risk_budget=1500.0, equity=100_000.0, exit_on=EXIT)
     r = evaluate(p, book_, RiskConfig(), NOW)
     assert not r.approved and "PORTFOLIO_RISK_CAP" in r.blocked_by
+
+
+# ── the round trip: proposal -> record -> held position -> exit ───────────────────
+
+from committee.cycle import _structure_dict  # noqa: E402
+from committee.manage import evaluate_exit, held_positions  # noqa: E402
+
+
+def a_share_decision(exit_on: date = EXIT) -> dict:
+    closes = series()
+    p = size_to_risk("EFA", "rsi2_reversion", Side.BUY, closes[-1], closes,
+                     risk_budget=1500.0, equity=100_000.0, exit_on=exit_on)
+    return {"executed": True, "strategy": p.strategy, "structure": _structure_dict(p)}, p
+
+
+def broker_row(symbol: str, qty: int, market_value: float) -> dict:
+    return {"symbol": symbol, "qty": str(qty), "market_value": str(market_value)}
+
+
+def test_a_share_position_survives_the_round_trip():
+    """A share leg missing from the record is a position the exit path cannot see — and for
+    a one-session strategy an invisible position is the strategy silently gone."""
+    decision, p = a_share_decision()
+    rows = [broker_row("EFA", p.share.qty, p.share.notional)]
+    held = held_positions(rows, [decision])
+    assert len(held) == 1
+    assert held[0].is_share and held[0].share_side == "long"
+    assert held[0].underlying == "EFA"
+    assert held[0].expiry == EXIT
+
+
+def test_the_share_exit_fires_on_the_day_not_before():
+    decision, p = a_share_decision()
+    held = held_positions([broker_row("EFA", p.share.qty, p.share.notional)], [decision])[0]
+    assert evaluate_exit(held, EXIT - timedelta(days=1)) is None  # still inside its session
+    out = evaluate_exit(held, EXIT)
+    assert out is not None and out.reason.value == "time_stop"
+
+
+def test_the_share_exit_fires_on_a_WINNER_too():
+    """No target: the measured strategy takes whatever one session gives. Letting a winner
+    run is a different strategy from the one that produced the numbers."""
+    decision, p = a_share_decision()
+    up = p.share.notional * 1.05
+    held = held_positions([broker_row("EFA", p.share.qty, up)], [decision])[0]
+    assert held.unrealized > 0
+    assert evaluate_exit(held, EXIT) is not None
+
+
+def test_share_unrealized_has_the_right_sign_both_ways():
+    decision, p = a_share_decision()
+    n = p.share.notional
+    long_up = held_positions([broker_row("EFA", p.share.qty, n * 1.02)], [decision])[0]
+    long_dn = held_positions([broker_row("EFA", p.share.qty, n * 0.98)], [decision])[0]
+    assert long_up.unrealized > 0 and long_dn.unrealized < 0
+
+
+def test_option_rules_never_run_on_a_share_position():
+    """assignment risk and short_strikes are meaningless here; the clock is the only rule."""
+    decision, p = a_share_decision()
+    held = held_positions([broker_row("EFA", p.share.qty, p.share.notional)], [decision])[0]
+    assert held.short_strikes == ()
+    # deep in its holding period, with a spot that would trip assignment logic on an option
+    assert evaluate_exit(held, EXIT - timedelta(days=1), spot=1.0) is None
+
+
+def test_the_kill_switch_still_flattens_a_share_position():
+    decision, p = a_share_decision()
+    held = held_positions([broker_row("EFA", p.share.qty, p.share.notional)], [decision])[0]
+    out = evaluate_exit(held, EXIT - timedelta(days=1), kill_switch=True)
+    assert out is not None and out.reason.value == "kill_switch"

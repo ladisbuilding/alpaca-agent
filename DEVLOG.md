@@ -898,3 +898,43 @@ limits. Added `max_gross_share_notional_pct = 1.50` and `OpenPosition.share_noti
 
 ⚠️ NOT yet wired to the committee or an executor. Next: an executor path for shares and the
 1-day time-boxed exit.
+
+### 2026-08-31 (late) — the reversion sleeve is WIRED (dry-run verified, not yet live)
+Executor path, time-boxed exit, and cycle integration. 206 tests green.
+
+**Entry timing settled first, because it decided the design:** the edge was measured entering
+at the CLOSE, but the last cron sitting is 15:30 ET.
+
+    enter at the CLOSE (backtested)      n=474  mean +0.2305%  hit 62%  t=+4.40
+    enter at 15:30 ET (what we can do)   n=474  mean +0.2008%  hit 60%  t=+3.80
+
+⇒ ~13% of the edge lost, still strongly positive. **No new infrastructure needed** — the
+existing 19:30 UTC slot works, guarded by `REVERSION_FROM_ET_HOUR = 15`.
+
+**⭐⭐ DESIGN RULING: the reversion sleeve passes the GATES but is NOT DEBATED.** The signal is
+a threshold on a number. This account's own evidence: the sleeve driven by a MEASURED
+statistic made money; the sleeve driven by an LLM NARRATIVE lost $509 over four trades.
+Asking a model whether it likes a measured edge invites that failure back in and costs ~$1 a
+sitting. Deterministic gates, no scouts, no committee.
+
+**⭐⭐⭐ THE BUG THAT WOULD HAVE KILLED THE WHOLE SLEEVE SILENTLY.** The pass was written inline
+at the end of `run_cycle` — but `if not nominations: return record` sits ABOVE it. **On any
+day the option scouts nominated nothing, the entire reversion sleeve would never run** — and
+a quiet options day is exactly a day it should act. Extracted to `_run_reversion()` and
+called from BOTH exit paths. ⭐ **Unit tests could not see this; only the end-to-end dry run
+did. An early return upstream silently disables everything written below it.**
+
+**⭐ A second silent halving:** `MAX_TRADES=2` bounds how much an LLM-driven sleeve may do in
+one sitting. The basket yields ~4 signals a day, so sharing that cap would have traded HALF
+the measured strategy. Now `MAX_REVERSION_TRADES=4`, counted separately; exposure stays
+bounded by the risk gates, which is the right place for it.
+
+**Also fixed:** `_structure_dict` now serialises the share leg — without it `held_positions()`
+cannot reconstruct the position, and a one-session strategy whose exit path cannot see its
+own position holds forever. Six round-trip tests cover proposal → record → held → exit,
+including that the exit fires on a WINNER (no target: the measured strategy takes whatever
+one session gives).
+
+**Dry run at 15:31 ET:** 6 signals, all 6 gated APPROVED, 0 executed (dry run).
+⚠️ Live it would take 4, ~$6k risk. **Next: flip it live and MEASURE the decay against the
+backtest.** Sharpe 3.87 is not credible; the paper fills are the experiment.

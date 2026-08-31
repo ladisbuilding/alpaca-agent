@@ -25,13 +25,25 @@ import asyncio
 import json
 import re
 from dataclasses import asdict, dataclass, field, replace
-from datetime import date, datetime
+from datetime import date, datetime, timedelta, timezone
 from typing import Any, Callable, Sequence
 
 from anthropic import AsyncAnthropic
 
 from .chain import LiquidityFilter, expiries_within
-from .gates import GateResult, Proposal, Right, RiskConfig, evaluate, summarize
+from .gates import (
+    GateResult,
+    OpenPosition,
+    Proposal,
+    Right,
+    RiskConfig,
+    Side,
+    evaluate,
+    summarize,
+)
+from .gates import evaluate as gate_evaluate
+from .reversion import scan as reversion_scan
+from .shares import size_to_risk
 from .llm import Turn, run_turn
 from .manage import ExitDecision, ManageConfig, held_positions, review
 from .market import MarketSnapshot
@@ -115,6 +127,7 @@ class CycleRecord:
     # from broker activity, never inferred from our own order log.
     orders_placed: int = 0
     positions_closed: int = 0
+    reversion: list[dict[str, Any]] = field(default_factory=list)
     exits: list[dict[str, Any]] = field(default_factory=list)
     cost_usd: float = 0.0
     notes: list[str] = field(default_factory=list)
@@ -152,6 +165,16 @@ def _gate_dict(result: GateResult) -> dict[str, Any]:
     }
 
 
+def _next_session(today: date) -> date:
+    """The next weekday. Exchange holidays are not modelled: the exit rule fires when the
+    date arrives OR later (`today >= expiry`), so a holiday delays the close by a session
+    rather than skipping it — late is recoverable, early is a different strategy."""
+    nxt = today + timedelta(days=1)
+    while nxt.weekday() >= 5:
+        nxt += timedelta(days=1)
+    return nxt
+
+
 def _structure_dict(p: Proposal) -> dict[str, Any]:
     return {
         "underlying": p.underlying,
@@ -172,6 +195,25 @@ def _structure_dict(p: Proposal) -> dict[str, Any]:
         "max_profit": round(p.max_profit, 2),
         "bid_ask_pct": round(p.bid_ask_pct, 4),
         "fingerprint": p.fingerprint,
+        # Present only for a SHARE position. held_positions() reconstructs the book from
+        # this record, so a share leg that is not serialised here becomes a position the
+        # exit path cannot see — it would be held forever, which for a one-session strategy
+        # is the whole strategy gone.
+        **(
+            {
+                "share": {
+                    "symbol": p.share.symbol,
+                    "side": p.share.side.value,
+                    "qty": p.share.qty,
+                    "ref_price": round(p.share.ref_price, 4),
+                    "stress_move": round(p.share.stress_move, 6),
+                    "exit_on": p.share.exit_on.isoformat(),
+                    "notional": round(p.share.notional, 2),
+                }
+            }
+            if p.share is not None
+            else {}
+        ),
     }
 
 
@@ -451,6 +493,139 @@ def verify_closed(
     return fingerprint not in still_held
 
 
+async def _run_reversion(
+    record: "CycleRecord",
+    snapshot: MarketSnapshot,
+    creds: McpCredentials,
+    client,
+    *,
+    reversion_closes: dict[str, list[float]] | None,
+    risk: RiskConfig,
+    switches,
+    recent: list,
+    dry_run: bool,
+    kill_switch: bool,
+    max_trades: int,
+) -> None:
+    """The reversion sleeve: measured, deterministic, and deliberately NOT debated.
+
+    ⚠️ A FUNCTION called from every exit path, because this was first written inline at the
+    end of run_cycle with `if not nominations: return record` above it — so on any day the
+    option scouts nominated nothing, the whole sleeve silently never traded. A quiet options
+    day is exactly a day this should still act.
+
+    ⚠️ It skips the scouts and the committee on purpose. The signal is a threshold on a
+    number, and the evidence from this account is blunt: the sleeve driven by a MEASURED
+    statistic made money, while the sleeve driven by an LLM NARRATIVE ("QQQ fell 6 of 7
+    sessions") lost $509 over four trades. Asking a model whether it likes a measured edge
+    invites that failure back in, and costs about $1 a sitting to do it. The GATES still run
+    in full — they are deterministic, which is the whole point.
+    """
+    if not reversion_closes:
+        return
+
+    signals = reversion_scan(reversion_closes)
+    if not signals:
+        record.notes.append("Reversion: no RSI(2) signal in the basket. A quiet day is fine.")
+        return
+
+    exit_on = _next_session(snapshot.today)
+    budget = snapshot.portfolio.equity * risk.max_loss_per_trade_pct
+    book = snapshot.portfolio
+
+    # ⚠️ Counted SEPARATELY from the options sleeve. MAX_TRADES=2 exists to bound how much
+    # an LLM-driven sleeve can do in one sitting; this sleeve is a threshold on a number and
+    # the basket produces ~4 signals a day, so sharing that cap would silently trade half the
+    # strategy that was measured. Exposure is bounded by the RISK gates — deployed risk,
+    # gross notional, position count — which is the right place for it.
+    placed_here = 0
+    for sig in signals:
+        if placed_here >= max_trades:
+            record.notes.append(
+                f"Reversion: {len(signals)} signal(s) but the {max_trades}-order cap for "
+                "this sleeve is already used."
+            )
+            break
+
+        proposal = size_to_risk(
+            sig.symbol,
+            "rsi2_reversion",
+            Side.BUY if sig.direction == "long" else Side.SELL,
+            sig.ref_price,
+            reversion_closes[sig.symbol],
+            risk_budget=budget,
+            equity=book.equity,
+            exit_on=exit_on,
+        )
+        if proposal is None:
+            continue
+
+        verdict = gate_evaluate(
+            proposal,
+            book,
+            risk,
+            datetime.now(timezone.utc),
+            kill_switch=kill_switch,
+            market_open=snapshot.is_open,
+            recent_fingerprints=recent,
+            switch_reason=switches.block_reason(proposal.strategy) if switches else None,
+        )
+        entry: dict[str, Any] = {
+            "underlying": proposal.underlying,
+            "strategy": proposal.strategy,
+            "signal": sig.describe(),
+            "structure": _structure_dict(proposal),
+            "gate": _gate_dict(verdict),
+            "executed": False,
+        }
+        record.reversion.append(entry)
+
+        if not verdict.approved or dry_run:
+            continue
+
+        leg = proposal.share
+        async with scoped_session(EXECUTOR.toolsets, creds) as (session, schemas):
+            turn = await run_turn(
+                client,
+                EXECUTOR,
+                session,
+                schemas,
+                f"Place exactly this SHARE order via place_stock_order: "
+                f"{leg.side.value} {leg.qty} shares of {proposal.underlying}.\n\n"
+                "Use a MARKETABLE LIMIT order, not a market order — read the current quote "
+                "and set the limit at or just through the far side. Do not alter the "
+                "quantity or the side.\n\n" + json.dumps(entry["structure"], indent=2),
+            )
+        _record_turn(record, turn)
+        entry["execution_note"] = turn.text
+        if any(
+            c.tool == "place_stock_order" and not c.result.startswith(("ERROR", "DENIED"))
+            for c in turn.tool_calls
+        ):
+            entry["executed"] = True
+            placed_here += 1
+            record.orders_placed += 1
+            recent.append((proposal.fingerprint, proposal.expiry))
+            # Keep the running book honest for the NEXT signal in this same sitting. These
+            # fire together — the basket's mean pairwise correlation is 0.51 — so evaluating
+            # each against the book as it stood at the open would approve a set that could
+            # never all be taken.
+            book = replace(
+                book,
+                open_positions=book.open_positions
+                + (
+                    OpenPosition(
+                        proposal.underlying,
+                        proposal.strategy,
+                        proposal.fingerprint,
+                        proposal.max_loss,
+                        proposal.expiry,
+                        share_notional=leg.notional,
+                    ),
+                ),
+            )
+
+
 async def run_cycle(
     snapshot: MarketSnapshot,
     creds: McpCredentials,
@@ -471,6 +646,8 @@ async def run_cycle(
     manage_config: ManageConfig | None = None,
     switches: Switches | None = None,
     candidates: list[Candidate] | None = None,
+    reversion_closes: dict[str, list[float]] | None = None,
+    max_reversion_trades: int = 4,
     refetch_positions: Callable[[], list[dict[str, Any]]] | None = None,
 ) -> CycleRecord:
     """`max_cycle_usd` stops a single sitting that turns pathological. An observed debating
@@ -547,8 +724,10 @@ async def run_cycle(
                 p = decision.position
                 turn = await run_turn(
                     client, EXECUTOR, session, schemas,
-                    "CLOSE this position. Place the closing multi-leg order via "
-                    "place_option_order — buy back what we sold and sell what we bought.\n\n"
+                    "CLOSE this position. If it is a SHARE position (a plain quantity of "
+                    "stock, no strikes) use place_stock_order for the opposite side; "
+                    "otherwise place the closing multi-leg order via place_option_order — "
+                    "buy back what we sold and sell what we bought.\n\n"
                     f"Underlying {p.underlying}, {p.strategy}, expiry {p.expiry}.\n"
                     f"Reason: {decision.reason.value} — {decision.detail}\n"
                     "Use get_all_positions to read the exact legs and quantities first.\n\n"
@@ -563,7 +742,8 @@ async def run_cycle(
                 )
                 _record_turn(record, turn)
                 submitted = any(
-                    c.tool == "place_option_order" and not c.result.startswith(("ERROR", "DENIED"))
+                    c.tool in ("place_option_order", "place_stock_order")
+                    and not c.result.startswith(("ERROR", "DENIED"))
                     for c in turn.tool_calls
                 )
                 # Ask the broker, never the tool output. See verify_closed.
@@ -607,7 +787,12 @@ async def run_cycle(
     nominations.sort(key=lambda n: -n.conviction)
     record.nominations = [asdict(n) for n in nominations]
     if not nominations:
-        record.notes.append("No nominations. A quiet cycle is a legitimate outcome.")
+        record.notes.append("No option nominations this sitting.")
+        await _run_reversion(
+            record, snapshot, creds, client, reversion_closes=reversion_closes,
+            risk=risk, switches=switches, recent=recent, dry_run=dry_run,
+            kill_switch=kill_switch, max_trades=max_reversion_trades,
+        )
         record.finished_at = datetime.now().astimezone().isoformat()
         return record
 
@@ -743,22 +928,41 @@ async def run_cycle(
             deliberation.execution_note = "DRY RUN — approved but not sent to the broker."
             continue
 
-        async with scoped_session(EXECUTOR.toolsets, creds) as (session, schemas):
-            exec_turn = await run_turn(
-                client, EXECUTOR, session, schemas,
+        if proposal.is_share:
+            leg = proposal.share
+            instruction = (
+                f"Place exactly this SHARE order via place_stock_order: "
+                f"{leg.side.value} {leg.qty} shares of {proposal.underlying}.\n\n"
+                "Use a MARKETABLE LIMIT order, not a market order — read the current quote "
+                "and set the limit at or just through the far side. Do not alter the "
+                "quantity or the side.\n\n"
+                + json.dumps(deliberation.structure, indent=2)
+            )
+            order_tool = "place_stock_order"
+        else:
+            instruction = (
                 "Place exactly this structure as ONE multi-leg order via place_option_order. "
                 "Do not alter strikes, quantity or structure.\n\n"
-                + json.dumps(deliberation.structure, indent=2),
+                + json.dumps(deliberation.structure, indent=2)
             )
+            order_tool = "place_option_order"
+
+        async with scoped_session(EXECUTOR.toolsets, creds) as (session, schemas):
+            exec_turn = await run_turn(client, EXECUTOR, session, schemas, instruction)
         _record_turn(record, exec_turn)
         deliberation.execution_note = exec_turn.text
-        placed = any(c.tool == "place_option_order" and not c.result.startswith(("ERROR", "DENIED"))
+        placed = any(c.tool == order_tool and not c.result.startswith(("ERROR", "DENIED"))
                      for c in exec_turn.tool_calls)
         deliberation.executed = placed
         if placed:
             record.orders_placed += 1
             recent.append((proposal.fingerprint, proposal.expiry))
 
+    await _run_reversion(
+        record, snapshot, creds, client, reversion_closes=reversion_closes,
+        risk=risk, switches=switches, recent=recent, dry_run=dry_run,
+        kill_switch=kill_switch, max_trades=max_reversion_trades,
+    )
     record.deliberations = [asdict(d) for d in deliberations]
     record.finished_at = datetime.now().astimezone().isoformat()
     return record

@@ -21,6 +21,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 
 from .cycle import run_cycle
 from .market import AlpacaRest, take_snapshot
+from .reversion import BASKET as REVERSION_BASKET
 from .mcp_client import McpCredentials
 from .screener import screen
 from .switches import Switches
@@ -176,6 +177,40 @@ def _screen_safely(rest, today, seeds):
         return []
 
 
+# The reversion sleeve acts on the LAST sitting of the day. Its edge was measured entering
+# at the close; entering at 15:30 ET keeps most of it (+0.201% vs +0.231%, t=3.80 vs 4.40),
+# and an earlier sitting is a different trade from the one that was tested.
+REVERSION_FROM_ET_HOUR = 15
+
+
+def _reversion_closes(rest, snapshot) -> dict[str, list[float]] | None:
+    """Daily closes for the reversion basket, or None when it is not that time of day.
+
+    ⚠️ feed=iex. This plan cannot query recent SIP data at all — a sip request 403s for
+    TODAY, and the series would then end YESTERDAY, producing yesterday's signal silently
+    and with no error. That is a wrong trade, not a crash.
+    """
+    from datetime import timedelta as _td
+
+    now_et = datetime.now(timezone.utc).astimezone(timezone(_td(hours=-4)))
+    if now_et.hour < REVERSION_FROM_ET_HOUR or not snapshot.is_open:
+        return None
+    start = (snapshot.today - _td(days=400)).isoformat()
+    out: dict[str, list[float]] = {}
+    for sym in REVERSION_BASKET:
+        try:
+            payload = rest._get(
+                f"{rest._data}/v2/stocks/{sym}/bars?timeframe=1Day&start={start}"
+                f"&limit=10000&feed=iex&adjustment=split"
+            )
+            closes = [float(b["c"]) for b in (payload.get("bars") or []) if b.get("c")]
+            if len(closes) >= 60:
+                out[sym] = closes
+        except Exception as exc:  # noqa: BLE001
+            print(f"  !! reversion closes {sym}: {type(exc).__name__}: {exc}")
+    return out or None
+
+
 async def one_cycle(force: bool = False, live: bool | None = None) -> dict:
     env = env_config()
     rest = AlpacaRest(env)
@@ -228,6 +263,10 @@ async def one_cycle(force: bool = False, live: bool | None = None) -> dict:
         open_decisions=open_decisions(api),
         broker_positions=broker_positions,
         candidates=screened,
+        reversion_closes=_reversion_closes(rest, snapshot),
+        # Its own cap: the basket yields ~4 signals a day and MAX_TRADES=2 is a bound on the
+        # LLM-driven sleeve, not on a deterministic one. The risk gates bound exposure.
+        max_reversion_trades=int(os.environ.get("MAX_REVERSION_TRADES", "4")),
         # Lets the exit path re-read the book from the broker after a close, instead of
         # trusting the closing tool call's output. See the note in cycle.py.
         refetch_positions=rest.positions,
@@ -246,6 +285,16 @@ async def one_cycle(force: bool = False, live: bool | None = None) -> dict:
         "deliberations": len(record.deliberations),
         "orders_placed": record.orders_placed,
         "positions_closed": record.positions_closed,
+        "reversion": [
+            {
+                "underlying": e["underlying"],
+                "signal": e["signal"],
+                "approved": e["gate"].get("approved"),
+                "blocked_by": e["gate"].get("blocked_by"),
+                "executed": e["executed"],
+            }
+            for e in record.reversion
+        ],
         "exits": record.exits,
         "cost_usd": round(record.cost_usd, 4),
         "spent_today_before": round(spent, 2),

@@ -62,9 +62,18 @@ class HeldPosition:
     max_loss: float
     current_value: float  # cost to close now; positive = we would pay to exit
     short_strikes: tuple[float, ...] = ()
+    # Set for a SHARE position. Its exit is the CLOCK, not a profit target — the measured
+    # strategy holds exactly one session and takes whatever that session gives. Adding a
+    # target or a stop would be a different strategy from the one that was tested.
+    share_qty: int = 0
+    share_side: str = ""
 
     def dte(self, today: date) -> int:
         return (self.expiry - today).days
+
+    @property
+    def is_share(self) -> bool:
+        return self.share_qty != 0
 
     @property
     def is_credit(self) -> bool:
@@ -104,6 +113,29 @@ def evaluate_exit(
     """Should this position be closed? Rules only, checked in order of urgency."""
     config = config or ManageConfig()
     dte = position.dte(today)
+
+    # ── SHARE POSITIONS: the clock, and nothing else ──────────────────────────────
+    # ⚠️ Checked BEFORE the option rules, which read short_strikes and assignment risk and
+    # mean nothing here. The measured strategy is "hold exactly one session" — it has no
+    # stop and no target, and adding either would be a different strategy from the one that
+    # produced the numbers. A kill switch still overrides, because that is about the book
+    # rather than about the trade.
+    if position.is_share:
+        if kill_switch:
+            return ExitDecision(position, ExitReason.KILL_SWITCH, "Kill switch engaged — flatten.")
+        if flatten:
+            return ExitDecision(
+                position, ExitReason.STRATEGY_KILLED,
+                f"The {position.strategy} family is KILLED — flattening rather than carrying it.",
+            )
+        if today >= position.expiry:
+            return ExitDecision(
+                position, ExitReason.TIME_STOP,
+                f"One-session hold is up (entered for exit on {position.expiry}). "
+                f"Currently {position.unrealized:+,.2f}. The rule closes regardless — "
+                "holding a winner longer is a strategy nobody measured.",
+            )
+        return None
 
     if kill_switch:
         return ExitDecision(position, ExitReason.KILL_SWITCH, "Kill switch engaged — flatten.")
@@ -220,6 +252,46 @@ def held_positions(
     for d in executed_decisions:
         s = d.get("structure") or {}
         legs = s.get("legs") or []
+
+        # ── a SHARE position: one broker row, no legs to join ─────────────────────
+        share = s.get("share") or {}
+        if share and not legs:
+            sym = str(share.get("symbol", ""))
+            row = by_symbol.get(sym)
+            fingerprint = s.get("fingerprint", "")
+            if not row or sym in claimed or (fingerprint and fingerprint in seen_fingerprints):
+                continue
+            claimed.add(sym)
+            if fingerprint:
+                seen_fingerprints.add(fingerprint)
+            try:
+                exit_on = date.fromisoformat(str(share.get("exit_on")))
+            except (TypeError, ValueError):
+                continue
+            qty = int(float(row.get("qty", 0) or 0))
+            if qty == 0:
+                continue
+            cost = float(share.get("ref_price", 0) or 0) * abs(qty)
+            value = float(row.get("market_value", 0) or 0)
+            out.append(
+                HeldPosition(
+                    fingerprint=fingerprint or f"{sym}|share",
+                    underlying=sym,
+                    strategy=str(s.get("strategy") or d.get("strategy") or "shares"),
+                    expiry=exit_on,
+                    # A long share position is a DEBIT: entry_credit is negative, and
+                    # `unrealized` then reads (current value - what we paid), which is the
+                    # right sign for both a long and a short.
+                    entry_credit=-cost if qty > 0 else cost,
+                    max_profit=cost,
+                    max_loss=float(s.get("max_loss", cost) or cost),
+                    current_value=value if qty > 0 else -value,
+                    share_qty=qty,
+                    share_side="long" if qty > 0 else "short",
+                )
+            )
+            continue
+
         if not legs:
             continue
         fingerprint = s.get("fingerprint", "")
