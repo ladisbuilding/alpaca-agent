@@ -753,3 +753,36 @@ minutes. Correct as a mid-contest addition with the out-of-sample work already b
 `ModuleNotFoundError: anthropic`, because the workflow installed only pytest while the suite
 imports `committee.cycle`. Green locally against a populated `.venv`, red on every clean
 checkout. Fixed; hardcoded test count dropped from the job name (second time it went stale).
+
+### 2026-08-31 — contest withdrawn; the system is the point now
+**Luke is not entering the hackathon:** *"I just want to perfect a trading system."*
+`CLAUDE.md` rewritten around that. Dead: competition account, write-up, video, cover image,
+social posting, `docs/LAUNCH.md`. **Stays paper** — `paper=True` is hardcoded, no live key has
+ever been in this repo. ⭐ The old brief was self-contradictory (a 6-day P&L sprint rewards
+YOLO and punishes risk gates); the new standard is **"would I trust this with money".**
+
+**Cron recovered.** Fridays 5 missed sittings were Cloudflare silently not invoking the
+runner's scheduled handler while firing the api worker's cron in the SAME account every hour —
+and still LISTING both runner schedules as registered. Re-registering via the API appeared to
+do nothing on the day but the schedule fired normally Monday; the redeploy has now
+re-established triggers properly. ⭐ **A registered cron is not a scheduled cron. Prove
+liveness from a SECOND worker in the same account — "registered" and "healthy" both lied.**
+
+**Deployed the exit fixes** (committed 08-28, undeployed until now). Between those dates the
+old code recorded **6 rejected closes as `closed: True` in one session**, retrying the same
+blocked order every 30 min and booking success each time. A stuck limit order held the legs
+(harmless in the end — IWM 293 vs a 304/309 call spread expiring worthless at max profit).
+
+**⭐⭐⭐ THE RECORD, BY SLEEVE — the only breakdown that matters:**
+
+| sleeve | P&L |
+|---|---|
+| **INCOME** (sell premium where the breach rate says rich) | **+$32 open; every closed structure green** |
+| **DIRECTIONAL** (buy debit spreads on a narrative) | **−$509, 0-for-4** |
+
+⇒ **Every dollar of the −$462 is the directional sleeve.** The income sleeve — the part driven
+by a MEASURED statistic (breach rate vs the 32% fair value) — works. The part driven by an LLM
+telling itself a story ("QQQ fell 6 of 7 sessions") loses. The single catalyst-sourced
+directional trade (NVDA post-earnings) was the only one that behaved.
+⭐ **Generalises past this project: the sleeve with a measurable premise made money; the sleeve
+with a narrative premise did not.**

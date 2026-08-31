@@ -1,32 +1,67 @@
 # CLAUDE.md — alpaca-agent
 
 ## What this is
-An entry for the **Alpaca × lablab.ai AI Trading Agents Hackathon**, 28 Aug – 4 Sep 2026.
-Autonomous AI trading agent on **Alpaca's Trading API + MCP server/CLI**, paper account seeded
-$100,000, **options trading mandatory**. Prize pool $6,000 (site figure; the email said $5,000).
+An **autonomous options trading agent** on **Alpaca's Trading API + MCP server**, running a
+committee of LLM roles behind deterministic risk gates. **Paper account, $100,000.**
 
-Full evaluation → `~/brain/wiki/concepts/ideas.md` (2026-08-24 entry).
+Built originally for the Alpaca × lablab.ai hackathon (28 Aug – 4 Sep 2026); **Luke withdrew
+from the contest on 2026-08-31 — see the ruling below.** It now exists to be made genuinely
+good rather than to be submitted. Origin evaluation → `~/brain/wiki/concepts/ideas.md`
+(2026-08-24 entry).
 
-## ⚠️ Why Luke is doing this — get the goal right
-**Not to win the P&L prize.** His stated reason: *"I think it would be fun and maybe I will get some
-professional benefit from it."*
+## ⚠️⚠️ THE CONTEST IS OFF — Luke's ruling, 2026-08-31
 
-That matters, because **a ~6-trading-day P&L contest with mandatory options is a VARIANCE contest, not
-a skill contest.** You'd be optimising *P(top-3 of N)*, which is maximised by concentrated, leveraged,
-unhedged bets — so **good risk management actively lowers your odds of winning**. The format even
-contradicts itself: it requires documenting "risk gates" while scoring rewards discarding them.
+**Luke decided NOT to enter the hackathon.** The goal is now, in his words:
+*"I just want to perfect a trading system."*
 
-**So optimise for the two things that actually pay out here:**
-1. **Durable skill** — Alpaca's MCP server is a genuinely interesting primitive (a programmable
-   brokerage: plug in a key, place orders on US stocks/options/ETFs/crypto, they hold the regulated
-   parts). That knowledge outlives the hackathon.
-2. **The 2 Social Engagement Awards** — a *separate, lower-variance* judging track on creativity and
-   engagement, not luck. ⚠️ This is build-in-public, Luke's documented drain — so if it's pursued,
-   automate the posting rather than grinding it manually.
+**This is a better brief, and the old one was fighting itself.** The note this replaces argued
+that a ~6-trading-day P&L contest with mandatory options is a **variance contest, not a skill
+contest** — you'd be optimising *P(top-3 of N)*, which is maximised by concentrated, leveraged,
+unhedged bets, so **good risk management actively lowered the odds of winning.** The format
+demanded documented risk gates while scoring rewarded discarding them. That tension is gone.
 
-**Corollary: build the agent you'd actually be proud of** (real risk gates, Kelly-aware sizing,
-explainable decisions) and accept it will probably lose the P&L race to someone who YOLO'd. That is
-the correct trade given the stated goal.
+**What this changes:**
+- **No deadline.** Nothing needs to ship by a date. Measure properly instead.
+- **Dead:** dedicated competition account, submission write-up, video, cover image, social
+  posting, the two Social Engagement Awards. `docs/LAUNCH.md` is now history, not a runbook.
+- **Alive and now the whole point:** real measured edge, honest accounting, risk gates that
+  mean something. `www` and `/deck` stay — they are how you READ the system.
+- **Stays paper.** `paper-api.alpaca.markets`, `paper=True` hardcoded, no live key ever in
+  this repo. `DRY_RUN=false` means "really place orders ON PAPER", nothing more.
+
+⭐ **The standard is no longer "would this impress a judge in six days" but "would I trust
+this with money".** Those pull in opposite directions, which is exactly why the switch helps.
+
+## 📊 What the record actually says (as of 2026-08-31, dev account PA35CQR61R2Q)
+
+Equity $99,537 · **all-time −$462** · 12 legs open. Broken down by sleeve, which is the only
+breakdown that matters:
+
+| sleeve | P&L |
+|---|---|
+| **INCOME** (sell premium where the breach rate says it is rich) | **+$32 open, and every closed structure green: +$21, +$12, plus an IWM condor expiring at max profit** |
+| **DIRECTIONAL** (buy debit spreads on a narrative) | **−$509. 0-for-4.** |
+
+⇒ **Every dollar lost is the directional sleeve.** The income sleeve works. This is the single
+most important fact about the system and it should drive what happens next.
+
+⚠️ The directional nominations were narrative ("QQQ fell 6 of 7 sessions"), not catalyst. The
+one catalyst-sourced trade (NVDA post-earnings) was the only directional position that ever
+behaved. The screener already computes catalysts — the committee only FLAGS them. Requiring a
+catalyst is a small, evidenced change.
+
+## 🔬 The only signal with a measured edge that clears its costs
+
+**Ross Cameron gap-and-go** (`agent/scripts/test_gap_and_go.py`): market-wide, out-of-sample,
+**survivorship-free** (delisted names included), 1,008 triggered setups —
+**+0.126R at 0.25% slippage, t=+3.04.** Break-even slippage ≈0.6%.
+Compare **ORB** (edge $3.85 = friction $4.00, dead) and **RSI(2)** (pooled t=1.79, ambiguous).
+
+Blocked on architecture, not on evidence: a `Nomination` carries
+`(underlying, sleeve, direction, conviction)` and **cannot carry entry/stop levels**;
+`verify_defined_risk()` derives max loss from **leg geometry** and has no path for shares;
+the cron is **30-minute** against a setup needing the 9:30–9:35 range. With the deadline gone,
+this is now buildable properly.
 
 ## ⭐⭐⭐ READ THIS FIRST — this is a FRESH BUILD (Luke's ruling, 2026-08-24)
 
