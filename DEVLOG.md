@@ -979,3 +979,32 @@ path, 206 tests. **What goes:** the signal. `ENABLE_REVERSION=false` by default.
 
 **Now testing gap-and-go the same way** — it has the identical weakness (Feb–Aug 2026 only)
 and deserves the identical scepticism.
+
+### 2026-08-31 (night, cont.) — gap-and-go SURVIVES the test that killed RSI(2)
+Same method, ~70 setups sampled per year, 2016–2026, at the measured 0.31% half-spread.
+
+    2016 +0.204  2017 +0.132  2018 +0.268  2019 +0.234  2020 +0.097  2021 **-0.236**
+    2022 +0.126  2023 +0.258  2024 +0.270  2025 +0.041  2026 +0.131
+    ALL YEARS  n=774  mean +0.142R  t=+2.94   — POSITIVE IN 10 OF 11 YEARS
+
+⭐ **Sampling validated internally:** the per-year sample puts 2026 at +0.131R against +0.126R
+from the exhaustive 1,008-setup run. Different method, same answer.
+
+**The contrast with RSI(2) is the whole point.** Identical test, opposite verdict:
+RSI(2) negative in 9 of 11 years (pooled t=-1.43); gap-and-go positive in 10 of 11 (t=+2.94).
+Six months could not tell them apart — **both looked excellent in 2026.**
+
+⚠️ **Three caveats that keep this modest:**
+1. **Early years are FLATTERED** — 2016 trades charged 2026's spread, and spreads have
+   tightened a lot. First half +0.187R vs second half +0.098R; part of that "decay" is my own
+   bias, not the market's.
+2. **Crowding is visible:** qualifying gappers **148 (2016) → 1,748 (2025)**, twelve-fold,
+   and 2025 is the weakest positive year (+0.041R).
+3. **The edge still sits on its own cost** — break-even slippage ~0.6% against a measured
+   0.627% median real spread. A fill-quality problem more than a signal problem.
+
+⇒ Real, persistent, thin. **Not** the Sharpe 3.75 the 2026-only run implied.
+
+**`docs/STRATEGY-BRIEF.md` corrected** — it had been written for Luke to send to another model
+for independent review and contained the now-falsified RSI(2) claims. Retracted in place, with
+the error explained, and the gap-and-go section rewritten with its full-history numbers.
