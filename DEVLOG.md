@@ -1056,3 +1056,43 @@ be obtained by RESTING a limit at the mid? That trades spread cost for adverse s
 you fill preferentially when the move goes against you — and it cannot be modelled without
 tick data, nor validated on paper (paper fills instantly at the quote, which is the exact
 fiction in question).
+
+### 2026-08-31 (night, cont. 3) — ⚠️⚠️⚠️ THE INCOME SLEEVE LOSES MONEY TOO
+Luke: *"i feel like you keep flip flopping."* Fair, and the diagnosis matters more than the
+defence: **every reversal moved the same way — more realism, worse result.** The failure was
+PROCEDURE, not judgment. I tested sequentially and announced each intermediate result as a
+verdict. Four announcements where there should have been one.
+
+**Built `agent/scripts/validate.py` — ONE battery, run ONCE, reported ONCE.** Eight checks,
+each derived from a mistake made here: full history / out-of-sample IN TIME / survivorship /
+per-setup measured friction / **realistic fill that CROSSES the spread** / multiple-testing
+correction / the feed you will actually trade / tail. **"Not run" counts as FAIL, and the
+prior is DEAD until everything passes.**
+
+⭐ **The asymmetry that governs all of it: a NEGATIVE result at honest costs is robust; a
+POSITIVE result is never proof, only "has not failed yet."**
+
+**Then applied it to the one strategy never tested — the LIVE income sleeve**, which is the
+only thing on this account that has made money. 2024-01→2026-08 (the full option-bar history
+Alpaca has), friction crossed on all 4 legs both ways, per-symbol spreads:
+
+    ungated        n=354  mean -$26.56/condor  win 62%  t=-2.54  total -$9,404
+    regime-gated   n= 70  mean -$35.56/condor  win 63%  t=-1.74   <- the GATE makes it WORSE
+    IWM gross      n=120  mean +$20.01  win 72%      IWM net  -$11.99
+    QQQ gross      n=116  mean -$20.42  win 56%   <- NEGATIVE BEFORE COSTS
+    SPY gross      n=118  mean  -$7.97  win 64%
+
+⭐⭐⭐ **The regime engine — the centrepiece of this system, the module I rewrote and was
+pleased with — has NEGATIVE value.** Gating on "premium is rich" made every case worse.
+⭐ Only IWM has gross edge, and $32 round-trip friction exceeds its +$20.
+⭐ **QQQ was in the universe the whole time with no edge even before costs.**
+
+⚠️ One nuance, NOT a rescue: the 2 condors actually closed here returned +$21/+$12 NET, close
+to IWM's GROSS — so the limit orders likely got price improvement rather than crossing. On
+liquid ETF options, resting inside the spread is realistic in a way it is not for a low-float
+gapper. **But n=2 is not evidence.**
+
+**⭐⭐⭐ BOTTOM LINE: four strategies, four deaths — ORB, RSI(2), gap-and-go, income sleeve.
+NOTHING on this project has shown an edge that survives honest costs.** The recurring shape
+every single time: **gross edge ≈ 0, and friction decides.** Cost: ~$50 of API spend and no
+capital. The deliverable is the battery, which catches this in one pass instead of four.
