@@ -1176,3 +1176,51 @@ retail costs. **Prior: ~30% that fills are good enough.** n=2 so far (+$21, +$12
 suggestive and worthless.
 
 206 tests green. Not deployed — needs a container build.
+
+### 2026-09-01 — ⚠️ the 45-DTE switch silently disabled the whole sleeve
+First live day on the new config, and it traded **nothing**: 7 sittings, 7 refusals, every one
+`SPY NO_STRUCTURE`. **A bug I introduced yesterday.**
+
+`IncomeConfig` moved to **35-55 DTE**, but `take_snapshot()` fetched chains in two windows
+topping out at **35 DTE** (`(0,10), (10,35)`), and `screener.py` capped at **12**. The income
+builder could not see a single tradable strike, so it correctly reported no structure — the
+gate log looked like a quiet market rather than a broken pipeline.
+
+⭐⭐ **A DTE window is a CONTRACT between the snapshot and every strategy that reads it. Change
+one end and the other silently returns nothing** — no error, no exception, just a plausible
+"no trade today" at every sitting. This is the same failure family as the early `return record`
+that disabled the reversion sleeve: **the system reports a legitimate-looking outcome while a
+whole component is unreachable.**
+
+Fixed: snapshot now fetches `(0,10), (10,35), (35,60)`; screener window 1-55. Verified —
+SPY builds at 38 DTE (credit $216 / max loss $884, 24%) and 45 DTE ($197 / $803, 25%).
+⭐ Credit/friction is now ~9x, up from ~6x at 2-9 DTE — better, though a cash-secured put
+would be ~50x (see the wheel research below).
+
+**Today: +$44.95, all-time −$442.20, 8 legs open** (down from 12 — the Aug-31 IWM condor
+expired worthless at max profit, as designed). **No orders placed, so no fill data yet.**
+
+### 2026-09-01 — the WHEEL, researched
+Luke asked. Sell a cash-secured put → if assigned, sell covered calls → if called away, repeat.
+
+**⭐⭐ Why it matters HERE: it is ONE leg, not four.** Every strategy on this project died on
+friction, and measured on live SPY/IWM chains:
+
+    SPY 30-delta put, 46 DTE   credit $796  friction $16   credit/friction 50x
+    IWM 30-delta put, 39 DTE   credit $360  friction  $7   credit/friction 51x
+    our iron condor                         friction $24   credit/friction  ~6-9x
+
+**~8x more friction-efficient.** A condor crosses 8 spreads (4 legs, open+close); a CSP held
+to expiry crosses **one**, and none at all if it expires worthless.
+
+**⭐ It also has 32 years of published evidence** — the CBOE PUT index since 1986:
+return 9.54% vs S&P 9.80%, **vol 9.95% vs 14.93%, Sharpe 0.65 vs 0.49, maxDD −33% vs −50%.**
+⚠️ **That is risk TRANSFORMATION, not alpha** — by put-call parity a CSP pays the same as a
+covered call, so it is long equity with capped upside and a premium cushion. CBOE's own
+research flags that PUT/WPUT turnover is far higher than the underlying and matters for net
+returns — our exact finding.
+
+⚠️ **Capital:** SPY at $767 ⇒ a CSP ties up **$75,100 = 75% of a $100k book.** IWM at $28,600
+(29%) is the only practical size here.
+⚠️ **Honest expectation: ~9.5%/yr ≈ $38/day on $100k.** Not $300/day. Anyone quoting 12-20% is
+quoting a low-IV-dependent best case.

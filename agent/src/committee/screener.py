@@ -35,7 +35,10 @@ from .regime import Regime, RegimeRead, classify
 MAX_SCREENED = 12
 MIN_TRADABLE_STRIKES = 8  # fewer than this and delta selection has nothing to choose from
 MAX_ATM_SPREAD_PCT = 0.06  # an ATM spread wider than this eats any edge we could measure
-MIN_DTE, MAX_DTE = 1, 12
+# Must SPAN every sleeve's tenor: income now trades 35-55 DTE (see IncomeConfig). A screener
+# window narrower than the strategy's window rejects names whose chains are perfectly liquid
+# at the tenor actually traded.
+MIN_DTE, MAX_DTE = 1, 55
 
 # ⚠️ EVENT GUARD. The volatility risk premium is a modest, persistent overpricing — the sort
 # that shows up as 1.2-1.6x implied-to-realised. When implied runs far beyond that, the market

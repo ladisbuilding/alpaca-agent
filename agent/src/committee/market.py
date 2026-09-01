@@ -326,7 +326,13 @@ def take_snapshot(rest: AlpacaRest, underlyings: list[str]) -> MarketSnapshot:
         # unfiltered call returns only the nearest 1000, which is 0-3 DTE on a liquid name.
         today = datetime.now(timezone.utc).date()
         merged: dict[str, Contract] = {}
-        for lo, hi in ((0, 10), (10, 35)):
+        # ⚠️ THREE windows. A single unfiltered call returns only the nearest 1000 contracts,
+        # which on a liquid name is 0-3 DTE — hence the split. The third band (35-60) was
+        # added on 2026-09-01 after IncomeConfig moved to 45 DTE: the chain topped out at 35,
+        # so the income builder could not see a single tradable strike and every sitting
+        # logged NO_STRUCTURE. ⭐ A DTE window is a CONTRACT between the snapshot and every
+        # strategy that reads it — change one end and the other silently returns nothing.
+        for lo, hi in ((0, 10), (10, 35), (35, 60)):
             try:
                 payload = rest.option_snapshots(
                     u,
