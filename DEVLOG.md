@@ -1224,3 +1224,26 @@ returns — our exact finding.
 (29%) is the only practical size here.
 ⚠️ **Honest expectation: ~9.5%/yr ≈ $38/day on $100k.** Not $300/day. Anyone quoting 12-20% is
 quoting a low-IV-dependent best case.
+
+### 2026-09-11 — ⛔ PROJECT SHUT DOWN
+Luke: *"turn off committee watchdog - this project has failed - shut it down and stop sending
+emails."*
+
+**Stopped:**
+- `alpaca-agent-runner` cron schedules removed (the committee's trading sittings). Verified `[]`.
+- `alpaca-agent-api` hourly watchdog cron removed. Verified `[]`.
+- `MAILGUN_API_KEY` secret deleted from `alpaca-agent-api`. ⚠️ Removing the cron was NOT enough:
+  `GET /watchdog` also calls `runWatchdog()` → `sendAlert()`, and with the committee off the
+  system reads as stale forever, so any hit on that URL would have emailed. `sendAlert` returns
+  "mailgun not configured — alert logged only" without the key, which closes every email path.
+  (Deletes this worker's binding only; the fleet's shared Mailgun key is untouched.)
+- Both `wrangler.jsonc` trigger lists emptied, so a future `npm run deploy` cannot re-arm either.
+
+**Not touched:** workers, D1 and the repo still exist (dormant, not deleted). The paper account
+`PA35CQR61R2Q` still holds 23 legs including 100 QQQ shares — left for Luke to decide.
+
+**Final state:** equity $97,419, all-time −$2,581 on paper; $113 real API spend.
+**Why it failed, in one line:** no strategy tested had a gross edge that survived realistic
+costs, and the live losses came mostly from engineering failures rather than trades — the
+largest (~$1,500) was an unmanaged QQQ call exercised into shares because the exit path only
+read the last 60 cycles.

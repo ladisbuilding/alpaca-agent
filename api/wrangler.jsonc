@@ -11,7 +11,10 @@
 
   // Hourly liveness check. The watchdog itself decides whether a sitting was due, so this
   // can fire around the clock without emailing at 3am.
-  "triggers": { "crons": ["7 * * * *"] },
+  // ⛔ PROJECT SHUT DOWN 2026-09-11 (Luke: "this project has failed - shut it down and stop
+  // sending emails"). The hourly watchdog cron is REMOVED so no alert email can fire. Kept
+  // empty rather than deleted so a future `npm run deploy` cannot silently re-arm it.
+  "triggers": { "crons": [] },
   // Cycle records: decisions, debate transcripts, gate outcomes, fills.
   // D1 rather than fleet Postgres — a deployed Worker could not reach fleet Postgres
   // (dropped 2026-08-20), which is exactly the failure that would bite mid-competition.

@@ -29,8 +29,10 @@
   // Every 30 minutes from 13:30 to 19:30 UTC, weekdays. The 20:00 slot is deliberately
   // omitted — the NEAR_CLOSE gate blocks new positions inside the last 15 minutes anyway,
   // so a sitting then could only ever refuse.
+  // ⛔ PROJECT SHUT DOWN 2026-09-11. The committee's trading sittings are REMOVED. Kept empty
+  // rather than deleted so a future deploy cannot silently re-arm the agent.
   "triggers": {
-    "crons": ["0,30 14-19 * * 1-5", "30 13 * * 1-5"]
+    "crons": []
   },
 
   "vars": {
