@@ -8,7 +8,7 @@ import sys, statistics, time, collections, math
 from pathlib import Path
 sys.path.insert(0,"src")
 from committee.market import AlpacaRest, load_dev_vars
-r=AlpacaRest(load_dev_vars(Path("/Users/lukedepass/brain/active-projects/alpaca-agent")/".dev.vars"))
+r=AlpacaRest(load_dev_vars(Path("/Users/lukedepass/bub/projects/active/alpaca-agent")/".dev.vars"))
 B=["LQD","HYG","TLT","IEF","EFA","EEM","IWM"]
 def bars(sym,start,end):
     out,page=[],None

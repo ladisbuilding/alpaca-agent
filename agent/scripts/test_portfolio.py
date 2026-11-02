@@ -8,7 +8,7 @@ import sys, json, statistics, math, collections, time
 from pathlib import Path
 sys.path.insert(0,"src")
 from committee.market import AlpacaRest, load_dev_vars
-r=AlpacaRest(load_dev_vars(Path("/Users/lukedepass/brain/active-projects/alpaca-agent")/".dev.vars"))
+r=AlpacaRest(load_dev_vars(Path("/Users/lukedepass/bub/projects/active/alpaca-agent")/".dev.vars"))
 START,END="2026-02-06","2026-08-30"
 ETF_FRICTION=0.0004  # ~4bp round trip, generous for these names
 
