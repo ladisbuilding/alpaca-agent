@@ -69,14 +69,14 @@ this is now buildable properly.
 this is a new project… we are starting fresh."* Every line here is written new.
 
 **The old work is REFERENCE ONLY — read it for findings, never for source.** Six months of trading
-work from 2026 sits in `~/brain/archived-projects/{stock-trader,trade-bot,trade-boy}`; write-up at
+work from 2026 sits in `~/Desktop/new-brain/projects/archived/{stock-trader,trade-bot,trade-boy}`; write-up at
 `~/Desktop/new-brain/archive/discoveries/prior-trading-work.md`. Mine it for *what was learned* (which strategies
 had edge, which were dead ends, how paper P&L lied) — that saves real time. Do not mine it for files.
 
 **A validated strategy already exists, backtested on Alpaca's own historical API:**
 - **QQQ Opening Range Breakout**, optimised params (R30 RR1.0 V1.0 T12, EMA filter OFF):
   **Sharpe 3.31 · +$4,523 over 6 months on $25k · PF 1.58 · 50.7% win · max DD −4.9%** — but read the
-  ⚠️ below before trusting that number. Source: `~/brain/archived-projects/stock-trader/research/backtest-results.md`
+  ⚠️ below before trusting that number. Source: `~/Desktop/new-brain/projects/archived/stock-trader/research/backtest-results.md`
 - **TSLA ORB** — secondary, profitable, fewer trades, less confidence.
 - **VWAP mean reversion → no edge.** **SPY ORB → no edge** (confirmed in both test periods). Don't retest.
 - Its written next step was literally *"Paper trade QQQ ORB and TSLA ORB on Alpaca to validate
@@ -97,7 +97,7 @@ had edge, which were dead ends, how paper P&L lied) — that saves real time. Do
 
 **Options research exists as READING** (and options are MANDATORY here) — note it targets tastytrade,
 so the *findings* transfer but none of the code does:
-`~/brain/archived-projects/stock-trader/research/spx-iron-condor-butterfly-research.md` —
+`~/Desktop/new-brain/projects/archived/stock-trader/research/spx-iron-condor-butterfly-research.md` —
 SPX **iron condors** (4-leg defined-risk, profits in a range, **~60–68% historical win**) vs
 **iron butterflies** (ATM shorts, larger credit, much narrower profit zone, **~40–50%**).
 
@@ -106,12 +106,12 @@ SPX **iron condors** (4-leg defined-risk, profits in a range, **~60–68% histor
 - Crypto arb is **fee-negative**: $0.43 gross vs $1.74 fees on 3 trades.
 
 **Other prior work worth READING (not copying — see the fresh-build ruling above):**
-`~/brain/archived-projects/trade-boy` (AI trader + sentiment: `SENTIMENT.md`, news ingestion) and
-`~/brain/archived-projects/trade-bot` (live execution engine, WebSocket feeds, position merging, and
+`~/Desktop/new-brain/projects/archived/trade-boy` (AI trader + sentiment: `SENTIMENT.md`, news ingestion) and
+`~/Desktop/new-brain/projects/archived/trade-bot` (live execution engine, WebSocket feeds, position merging, and
 `tasks/lessons.md` — the source of the paper-P&L warning below).
 
 ## ⚠️⚠️ PAPER P&L LIES — Luke has already been burned by exactly this
-From `~/brain/archived-projects/trade-bot/tasks/lessons.md`:
+From `~/Desktop/new-brain/projects/archived/trade-bot/tasks/lessons.md`:
 > Paper trading showed **"$2,015 P&L, 100% win rate."** After audit: **$89.**
 
 Cause: a **5-minute dedup window** re-traded the same opportunity every ~6 minutes, so **72 "trades"
