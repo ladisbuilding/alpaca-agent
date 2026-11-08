@@ -6,7 +6,7 @@ committee of LLM roles behind deterministic risk gates. **Paper account, $100,00
 
 Built originally for the Alpaca × lablab.ai hackathon (28 Aug – 4 Sep 2026); **Luke withdrew
 from the contest on 2026-08-31 — see the ruling below.** It now exists to be made genuinely
-good rather than to be submitted. Origin evaluation → `~/brain/wiki/concepts/ideas.md`
+good rather than to be submitted. Origin evaluation → `~/Desktop/new-brain/archive/concepts/ideas.md`
 (2026-08-24 entry).
 
 ## ⚠️⚠️ THE CONTEST IS OFF — Luke's ruling, 2026-08-31
@@ -70,7 +70,7 @@ this is a new project… we are starting fresh."* Every line here is written new
 
 **The old work is REFERENCE ONLY — read it for findings, never for source.** Six months of trading
 work from 2026 sits in `~/brain/archived-projects/{stock-trader,trade-bot,trade-boy}`; write-up at
-`~/brain/wiki/discoveries/prior-trading-work.md`. Mine it for *what was learned* (which strategies
+`~/Desktop/new-brain/archive/discoveries/prior-trading-work.md`. Mine it for *what was learned* (which strategies
 had edge, which were dead ends, how paper P&L lied) — that saves real time. Do not mine it for files.
 
 **A validated strategy already exists, backtested on Alpaca's own historical API:**
