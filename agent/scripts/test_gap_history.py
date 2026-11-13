@@ -30,7 +30,7 @@ import sys, json, statistics, time, collections, random
 from pathlib import Path
 sys.path.insert(0,"src")
 from committee.market import AlpacaRest, load_dev_vars
-r=AlpacaRest(load_dev_vars(Path("/Users/lukedepass/bub/projects/active/alpaca-agent")/".dev.vars"))
+r=AlpacaRest(load_dev_vars(Path("/Users/lukedepass/Desktop/new-brain/projects/active/alpaca-agent")/".dev.vars"))
 syms=json.loads(Path("/tmp/syms.json").read_text())
 YEARS=[(y,f"{y}-01-01",f"{y}-12-31") for y in range(2016,2026)]+[(2026,"2026-01-01","2026-08-30")]
 PER_YEAR=90

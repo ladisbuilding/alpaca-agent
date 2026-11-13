@@ -15,7 +15,7 @@ from datetime import date, timedelta
 from pathlib import Path
 sys.path.insert(0,"src")
 from committee.market import AlpacaRest, load_dev_vars
-r=AlpacaRest(load_dev_vars(Path("/Users/lukedepass/bub/projects/active/alpaca-agent")/".dev.vars"))
+r=AlpacaRest(load_dev_vars(Path("/Users/lukedepass/Desktop/new-brain/projects/active/alpaca-agent")/".dev.vars"))
 SPREAD={"SPY":0.030,"QQQ":0.120,"IWM":0.060}   # measured today at 35-55 DTE
 WING=10; TAKE_PROFIT=0.50
 def daily(sym,a,b):

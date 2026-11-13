@@ -23,7 +23,7 @@ import sys, json, statistics, math, time
 from pathlib import Path
 sys.path.insert(0,"src")
 from committee.market import AlpacaRest, load_dev_vars
-r=AlpacaRest(load_dev_vars(Path("/Users/lukedepass/bub/projects/active/alpaca-agent")/".dev.vars"))
+r=AlpacaRest(load_dev_vars(Path("/Users/lukedepass/Desktop/new-brain/projects/active/alpaca-agent")/".dev.vars"))
 START,END="2026-02-06","2026-08-30"  # SIP is blocked for TODAY on this plan
 
 UNIVERSE={

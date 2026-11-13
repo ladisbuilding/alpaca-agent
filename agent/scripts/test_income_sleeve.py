@@ -39,7 +39,7 @@ from datetime import date, timedelta
 from pathlib import Path
 sys.path.insert(0,"src")
 from committee.market import AlpacaRest, load_dev_vars
-r=AlpacaRest(load_dev_vars(Path("/Users/lukedepass/bub/projects/active/alpaca-agent")/".dev.vars"))
+r=AlpacaRest(load_dev_vars(Path("/Users/lukedepass/Desktop/new-brain/projects/active/alpaca-agent")/".dev.vars"))
 
 # ⚠️ PER SYMBOL, measured today on 0.10-0.22 delta, 2-9 DTE. Pooling these would charge SPY
 # four times its real cost and flatter IWM — and friction is what decides every one of these.
